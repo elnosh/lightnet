@@ -1,0 +1,42 @@
+# This is a template showing all available options for defining a lightnet network.
+# Copy this file, rename it (e.g. mynetwork.yaml), and customize it.
+
+name: mynetwork
+
+# --- Bitcoin nodes ---
+# At least one bitcoind node is required for lightning nodes to connect to.
+bitcoind:
+  - name: btc1
+    version: "30.2"
+    rpc_port: 18443    # host-mapped RPC port (default: 18443)
+    p2p_port: 18444    # host-mapped P2P port (default: 18444)
+
+# --- LND nodes ---
+lnd:
+  - name: alice
+    version: "0.20.1-beta"
+    grpc_port: 10009           # host-mapped gRPC port (default: 10009)
+    rest_port: 8080            # host-mapped REST port (default: 8080)
+    p2p_port: 9735             # host-mapped P2P port (default: 9735)
+    connects_to: btc1          # which bitcoind node to use (default: first bitcoind)
+
+  - name: bob
+    version: "0.20.1-beta"
+    grpc_port: 10010
+    rest_port: 8081
+    p2p_port: 9736             # host-mapped P2P port (default: 9736 for second node)
+    connects_to: btc1
+
+# --- Core Lightning nodes ---
+# cln:
+#   - name: carol
+#     # version: "25.12"  # optional — this is the default
+#     grpc_port: 9736     # host-mapped gRPC port (default: 9736)
+#     p2p_port: 19735     # host-mapped P2P port (default: 19735)
+#     connects_to: btc1
+
+# --- LDK-server nodes (stub — no image available yet) ---
+# ldk_server:
+#   - name: dave
+#     rest_port: 3000
+#     connects_to: btc1
