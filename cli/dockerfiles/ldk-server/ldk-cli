@@ -1,0 +1,16 @@
+#!/bin/sh
+# ldk-cli: thin wrapper around ldk-server-cli that resolves credentials
+# from their fixed paths in /data so callers don't need to handle the
+# binary api_key encoding or tls cert path.
+#
+# ldk-server-cli expects the api_key as a hex string via --api-key,
+# but the server writes it as raw binary to /data/regtest/api_key.
+
+DATA_DIR="${LDK_SERVER_STORAGE_DIR_PATH:-/data}"
+HEX_KEY="$(od -An -tx1 "${DATA_DIR}/regtest/api_key" 2>/dev/null | tr -d ' \n')"
+
+exec ldk-server-cli \
+  --base-url localhost:3002 \
+  --tls-cert "${DATA_DIR}/tls.crt" \
+  --api-key "${HEX_KEY}" \
+  "$@"

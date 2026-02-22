@@ -302,6 +302,89 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		}()
 	}
 
+	// LDK server nodes
+	for _, ldkCfg := range cfg.LDKServer {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			containerName := dockerpkg.ContainerName(cfg.Name, ldkCfg.Name)
+
+			btc := getBitcoind(ldkCfg.ConnectsTo)
+			if btc == nil {
+				results <- startResult{name: ldkCfg.Name, err: fmt.Errorf("ldk %s: bitcoind %q not found", ldkCfg.Name, ldkCfg.ConnectsTo)}
+				return
+			}
+			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, btc.Name)
+
+			dataDir, err := nodes.GenerateLDKConfig(cfg.Name, ldkCfg.Name, bitcoindContainer, btc.RPCPort, ldkCfg.P2PPort)
+			if err != nil {
+				results <- startResult{name: ldkCfg.Name, err: fmt.Errorf("ldk %s config: %w", ldkCfg.Name, err)}
+				return
+			}
+
+			imageTag := dockerpkg.LocalImageName("ldk", "latest")
+			exists, err := dockerpkg.ImageExists(ctx, c, imageTag)
+			if err != nil {
+				results <- startResult{name: ldkCfg.Name, err: err}
+				return
+			}
+			if !exists || rebuild {
+				fmt.Printf("Building image %s...\n", imageTag)
+				if err := dockerpkg.BuildImage(ctx, c, dockerfiles.FS, "ldk-server", "", "", imageTag); err != nil {
+					results <- startResult{name: ldkCfg.Name, err: err}
+					return
+				}
+			}
+
+			opts := dockerpkg.CreateContainerOptions{
+				Name:        containerName,
+				Image:       imageTag,
+				NetworkName: dockerNet,
+				Cmd:         []string{"/data/ldk-config.toml"},
+				Ports: []dockerpkg.PortBinding{
+					{HostPort: ldkCfg.RESTPort, ContainerPort: nodes.LDKRESTContainerPort},
+					{HostPort: ldkCfg.P2PPort, ContainerPort: nodes.LDKP2PContainerPort},
+				},
+				Mounts: []dockerpkg.VolumeMount{
+					{HostPath: dataDir, ContainerPath: "/data"},
+				},
+				Env: []string{
+					fmt.Sprintf("LDK_SERVER_BITCOIND_RPC_ADDRESS=%s:%d", bitcoindContainer, btc.RPCPort),
+					"LDK_SERVER_BITCOIND_RPC_USER=lightnet",
+					"LDK_SERVER_BITCOIND_RPC_PASSWORD=lightnet",
+				},
+			}
+
+			id, err := dockerpkg.CreateContainer(ctx, c, opts)
+			if err != nil {
+				results <- startResult{name: ldkCfg.Name, err: err}
+				return
+			}
+			if err := dockerpkg.StartContainer(ctx, c, id); err != nil {
+				results <- startResult{name: ldkCfg.Name, err: err}
+				return
+			}
+
+			if err := nodes.WaitLDKReady(ctx, c, containerName, 90*time.Second); err != nil {
+				results <- startResult{name: ldkCfg.Name, err: err}
+				return
+			}
+
+			results <- startResult{
+				name: ldkCfg.Name,
+				state: state.NodeState{
+					Kind:          "ldk",
+					ContainerName: containerName,
+					Connection: state.ConnectionInfo{
+						LDKRESTUrl:  fmt.Sprintf("https://localhost:%d", ldkCfg.RESTPort),
+						P2PInternal: fmt.Sprintf("%s:%d", containerName, nodes.LDKP2PContainerPort),
+						P2PExternal: fmt.Sprintf("127.0.0.1:%d", ldkCfg.P2PPort),
+					},
+				},
+			}
+		}()
+	}
+
 	// Collect results
 	go func() {
 		wg.Wait()

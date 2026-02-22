@@ -37,5 +37,6 @@ type LDKConfig struct {
 	Name       string `yaml:"name"`
 	Version    string `yaml:"version"`
 	RESTPort   int    `yaml:"rest_port"`
+	P2PPort    int    `yaml:"p2p_port"`
 	ConnectsTo string `yaml:"connects_to"`
 }

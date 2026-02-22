@@ -35,8 +35,9 @@ lnd:
 #     p2p_port: 19735     # host-mapped P2P port (default: 19735)
 #     connects_to: btc1
 
-# --- LDK-server nodes (stub — no image available yet) ---
-# ldk_server:
-#   - name: dave
-#     rest_port: 3000
-#     connects_to: btc1
+# --- LDK-server nodes ---
+ldk_server:
+  - name: dave
+    rest_port: 3000
+    p2p_port: 29735    # host-mapped P2P port (default: 29735)
+    connects_to: btc1

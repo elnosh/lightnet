@@ -75,9 +75,12 @@ func BuildImage(ctx context.Context, c *client.Client, embedFS embed.FS, nodeTyp
 		}
 	}()
 
-	versionCopy := version
-	buildArgs := map[string]*string{
-		buildArgName: &versionCopy,
+	var buildArgs map[string]*string
+	if buildArgName != "" {
+		versionCopy := version
+		buildArgs = map[string]*string{
+			buildArgName: &versionCopy,
+		}
 	}
 
 	resp, err := c.ImageBuild(ctx, tarReader, client.ImageBuildOptions{

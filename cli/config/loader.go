@@ -17,6 +17,7 @@ const (
 	DefaultCLNGRPCPort     = 9736
 	DefaultCLNP2PPort      = 19735 // host-mapped; inside container always 9735
 	DefaultLDKRESTPort     = 3000
+	DefaultLDKP2PPort      = 29735 // host-mapped; inside container always 3001
 )
 
 // LoadNetwork resolves and parses a network YAML file.
@@ -121,6 +122,9 @@ func applyDefaults(cfg *NetworkConfig) {
 		if n.RESTPort == 0 {
 			n.RESTPort = DefaultLDKRESTPort + i
 		}
+		if n.P2PPort == 0 {
+			n.P2PPort = DefaultLDKP2PPort + i
+		}
 		if n.ConnectsTo == "" {
 			n.ConnectsTo = firstBitcoind
 		}
@@ -219,6 +223,9 @@ func validate(cfg *NetworkConfig) error {
 	}
 	for _, n := range cfg.LDKServer {
 		if err := checkPort(n.RESTPort, n.Name+"/rest"); err != nil {
+			return err
+		}
+		if err := checkPort(n.P2PPort, n.Name+"/p2p"); err != nil {
 			return err
 		}
 	}
