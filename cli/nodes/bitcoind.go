@@ -83,15 +83,15 @@ func MineInitialBlocks(ctx context.Context, c *client.Client, containerName stri
 	rpcBase := []string{"bitcoin-cli", "-regtest", "-rpcuser=lightnet", "-rpcpassword=lightnet"}
 
 	// Create the mining wallet; if it already exists, load it.
-	_, err := dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "createwallet", "mining"))
+	_, err := dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "createwallet", "test"))
 	if err != nil {
 		// Wallet may already exist — try loading it (ignore errors; it may be loaded).
-		dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "loadwallet", "mining")) //nolint:errcheck
+		dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "loadwallet", "test")) //nolint:errcheck
 	}
 
-	// Get a fresh address from the mining wallet.
+	// Get a fresh address from the test wallet.
 	addrOut, err := dockerpkg.ExecOutput(ctx, c, containerName,
-		append(rpcBase, "-rpcwallet=mining", "getnewaddress", "", "bech32"))
+		append(rpcBase, "-rpcwallet=test", "getnewaddress", "", "bech32"))
 	if err != nil {
 		return fmt.Errorf("getting mining address: %w", err)
 	}

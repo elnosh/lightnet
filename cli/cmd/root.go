@@ -18,4 +18,5 @@ func init() {
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(fundCmd)
 }

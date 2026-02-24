@@ -14,6 +14,7 @@ var knownCmds = map[string]bool{
 	"stop":    true,
 	"info":    true,
 	"list":    true,
+	"fund":    true,
 	"help":    true,
 	"--help":  true,
 	"-h":      true,
