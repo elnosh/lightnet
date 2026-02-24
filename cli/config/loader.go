@@ -8,18 +8,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	DefaultBitcoindRPCPort = 18443
-	DefaultBitcoindP2PPort = 18444
-	DefaultLNDGRPCPort     = 10009
-	DefaultLNDRESTPort     = 8080
-	DefaultLNDP2PPort      = 9735 // host-mapped port; inside container always 9735
-	DefaultCLNGRPCPort     = 9736
-	DefaultCLNP2PPort      = 19735 // host-mapped; inside container always 9735
-	DefaultLDKRESTPort     = 3000
-	DefaultLDKP2PPort      = 29735 // host-mapped; inside container always 3001
-)
-
 // LoadNetwork resolves and parses a network YAML file.
 // It checks cwd first, then ~/.lightnet/networks/<name>.yaml.
 func LoadNetwork(nameOrPath string) (*NetworkConfig, error) {
@@ -73,60 +61,26 @@ func resolveNetworkFile(nameOrPath string) (string, error) {
 }
 
 func applyDefaults(cfg *NetworkConfig) {
-	for i := range cfg.Bitcoind {
-		n := &cfg.Bitcoind[i]
-		if n.RPCPort == 0 {
-			n.RPCPort = DefaultBitcoindRPCPort + i
-		}
-		if n.P2PPort == 0 {
-			n.P2PPort = DefaultBitcoindP2PPort + i
-		}
-	}
-
 	firstBitcoind := ""
 	if len(cfg.Bitcoind) > 0 {
 		firstBitcoind = cfg.Bitcoind[0].Name
 	}
 
 	for i := range cfg.LND {
-		n := &cfg.LND[i]
-		if n.GRPCPort == 0 {
-			n.GRPCPort = DefaultLNDGRPCPort + i
-		}
-		if n.RESTPort == 0 {
-			n.RESTPort = DefaultLNDRESTPort + i
-		}
-		if n.P2PPort == 0 {
-			n.P2PPort = DefaultLNDP2PPort + i
-		}
-		if n.ConnectsTo == "" {
-			n.ConnectsTo = firstBitcoind
+		if cfg.LND[i].ConnectsTo == "" {
+			cfg.LND[i].ConnectsTo = firstBitcoind
 		}
 	}
 
 	for i := range cfg.CLN {
-		n := &cfg.CLN[i]
-		if n.GRPCPort == 0 {
-			n.GRPCPort = DefaultCLNGRPCPort + i
-		}
-		if n.P2PPort == 0 {
-			n.P2PPort = DefaultCLNP2PPort + i
-		}
-		if n.ConnectsTo == "" {
-			n.ConnectsTo = firstBitcoind
+		if cfg.CLN[i].ConnectsTo == "" {
+			cfg.CLN[i].ConnectsTo = firstBitcoind
 		}
 	}
 
 	for i := range cfg.LDKServer {
-		n := &cfg.LDKServer[i]
-		if n.RESTPort == 0 {
-			n.RESTPort = DefaultLDKRESTPort + i
-		}
-		if n.P2PPort == 0 {
-			n.P2PPort = DefaultLDKP2PPort + i
-		}
-		if n.ConnectsTo == "" {
-			n.ConnectsTo = firstBitcoind
+		if cfg.LDKServer[i].ConnectsTo == "" {
+			cfg.LDKServer[i].ConnectsTo = firstBitcoind
 		}
 	}
 }
@@ -178,55 +132,6 @@ func validate(cfg *NetworkConfig) error {
 		}
 		if n.ConnectsTo != "" && !bitcoindNames[n.ConnectsTo] {
 			return fmt.Errorf("ldk %q: connects_to %q is not a known bitcoind node", n.Name, n.ConnectsTo)
-		}
-	}
-
-	// Check host port collisions
-	ports := make(map[int]string)
-	checkPort := func(port int, desc string) error {
-		if port == 0 {
-			return nil
-		}
-		if prev, ok := ports[port]; ok {
-			return fmt.Errorf("port %d used by both %s and %s", port, prev, desc)
-		}
-		ports[port] = desc
-		return nil
-	}
-
-	for _, n := range cfg.Bitcoind {
-		if err := checkPort(n.RPCPort, n.Name+"/rpc"); err != nil {
-			return err
-		}
-		if err := checkPort(n.P2PPort, n.Name+"/p2p"); err != nil {
-			return err
-		}
-	}
-	for _, n := range cfg.LND {
-		if err := checkPort(n.GRPCPort, n.Name+"/grpc"); err != nil {
-			return err
-		}
-		if err := checkPort(n.RESTPort, n.Name+"/rest"); err != nil {
-			return err
-		}
-		if err := checkPort(n.P2PPort, n.Name+"/p2p"); err != nil {
-			return err
-		}
-	}
-	for _, n := range cfg.CLN {
-		if err := checkPort(n.GRPCPort, n.Name+"/grpc"); err != nil {
-			return err
-		}
-		if err := checkPort(n.P2PPort, n.Name+"/p2p"); err != nil {
-			return err
-		}
-	}
-	for _, n := range cfg.LDKServer {
-		if err := checkPort(n.RESTPort, n.Name+"/rest"); err != nil {
-			return err
-		}
-		if err := checkPort(n.P2PPort, n.Name+"/p2p"); err != nil {
-			return err
 		}
 	}
 

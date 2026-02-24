@@ -12,31 +12,22 @@ type NetworkConfig struct {
 type BitcoindConfig struct {
 	Name    string `yaml:"name"`
 	Version string `yaml:"version"`
-	RPCPort int    `yaml:"rpc_port"`
-	P2PPort int    `yaml:"p2p_port"`
 }
 
 type LNDConfig struct {
 	Name       string `yaml:"name"`
 	Version    string `yaml:"version"`
-	GRPCPort   int    `yaml:"grpc_port"`
-	RESTPort   int    `yaml:"rest_port"`
-	P2PPort    int    `yaml:"p2p_port"`
 	ConnectsTo string `yaml:"connects_to"`
 }
 
 type CLNConfig struct {
 	Name       string `yaml:"name"`
 	Version    string `yaml:"version"`
-	GRPCPort   int    `yaml:"grpc_port"`
-	P2PPort    int    `yaml:"p2p_port"`
 	ConnectsTo string `yaml:"connects_to"`
 }
 
 type LDKConfig struct {
 	Name       string `yaml:"name"`
 	Version    string `yaml:"version"`
-	RESTPort   int    `yaml:"rest_port"`
-	P2PPort    int    `yaml:"p2p_port"`
 	ConnectsTo string `yaml:"connects_to"`
 }

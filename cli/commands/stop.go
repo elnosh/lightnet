@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	dockerpkg "github.com/elnosh/lightnet/cli/docker"
 	"github.com/elnosh/lightnet/cli/state"
@@ -40,6 +42,13 @@ func RunStop(networkName string, remove bool) error {
 		}
 		if err := state.RemoveNetwork(networkName); err != nil {
 			return fmt.Errorf("removing network from state: %w", err)
+		}
+		home, err := os.UserHomeDir()
+		if err == nil {
+			networkDataDir := filepath.Join(home, ".lightnet", "networks", networkName)
+			if err := os.RemoveAll(networkDataDir); err != nil {
+				fmt.Printf("  warning: removing data directory: %v\n", err)
+			}
 		}
 		fmt.Printf("Network %q removed.\n", networkName)
 	} else {

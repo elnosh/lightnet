@@ -50,11 +50,6 @@ func printNodeInfo(name string, n state.NodeState) {
 		printP2P(n.Connection)
 		fmt.Printf("  TLS cert:     %s\n", n.Connection.TLSCertPath)
 		fmt.Printf("  Macaroon:     %s\n", n.Connection.MacaroonPath)
-		fmt.Printf("\n  lncli shortcut:\n")
-		fmt.Printf("    lncli --rpcserver=%s \\\n", n.Connection.GRPCUrl)
-		fmt.Printf("          --tlscertpath=%s \\\n", n.Connection.TLSCertPath)
-		fmt.Printf("          --macaroonpath=%s \\\n", n.Connection.MacaroonPath)
-		fmt.Printf("          <command>\n")
 
 	case "cln":
 		if n.Connection.GRPCUrl != "" {
