@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Build the CLI binary → bin/lightnet
-make build-cli
+# Build the CLI binary (from cli/ directory)
+cd cli && go build -o ../bin/lightnet .
 
 # Run tests (from cli/ directory)
 cd cli && go test ./...
@@ -29,13 +29,14 @@ lightnet start <network-yaml-or-name> --rebuild # Force-rebuild images even if t
 lightnet stop <network>                 # Stop and remove containers
 lightnet info <network>                 # Show connection info for all nodes
 lightnet list                           # List all known networks
+lightnet fund <network> <address> <amount>      # Send BTC and mine 6 confirming blocks
 
 # Execute a command on a node (main dispatch path in main.go)
 lightnet <network> <node> [cmd...]
 # e.g.: lightnet mynetwork alice listchannels
 ```
 
-The `main.go` entry point routes any unrecognized first argument to `commands.RunNodeExec`, treating it as a network name. Known subcommands (`start`, `stop`, `info`, `list`) go through Cobra.
+The `main.go` entry point routes any unrecognized first argument to `commands.RunNodeExec`, treating it as a network name. Known subcommands (`start`, `stop`, `info`, `list`, `fund`, `version`) go through Cobra.
 
 ## Architecture
 
@@ -55,10 +56,11 @@ cli/
 ├── docker/              # Thin wrappers around Docker SDK (client, network, containers, exec)
 │   └── images.go        # LocalImageName, ImageExists, BuildImage (builds from embedded FS)
 ├── dockerfiles/         # Embedded Dockerfiles and support files (embed.go bundles these into binary)
-│   ├── embed.go         # //go:embed all:bitcoind all:lnd all:clightning
+│   ├── embed.go         # //go:embed all:bitcoind all:lnd all:clightning all:ldk-server
 │   ├── bitcoind/        # Dockerfile, docker-entrypoint.sh, bashrc
 │   ├── lnd/             # Dockerfile, docker-entrypoint.sh, bashrc
-│   └── clightning/      # Dockerfile, docker-entrypoint.sh, bashrc
+│   ├── clightning/      # Dockerfile, docker-entrypoint.sh, bashrc
+│   └── ldk-server/      # Dockerfile, docker-entrypoint.sh, bashrc
 ├── nodes/               # Per-node-type config generation + readiness polling
 │   ├── node.go          # Node interface: Kind() + BuildCommand(userArgs)
 │   ├── bitcoind.go
@@ -84,7 +86,7 @@ cli/
 
 **Node interface:** Each node type implements `BuildCommand(userArgs []string) []string` which translates bare user args (e.g. `["listchannels"]`) into the full `docker exec` command (e.g. `["lncli", "--network=regtest", ..., "listchannels"]`).
 
-**Local image building:** On `start`, each node's image is built from the embedded Dockerfile if it doesn't already exist locally (or if `--rebuild` is passed). Images are tagged `lightnet-<nodeType>:<version>` (e.g. `lightnet-lnd:0.20.1-beta`). The Dockerfiles accept a version as a build arg (`BITCOIN_VERSION`, `LND_VERSION`, `CLN_VERSION`) and download the appropriate release binary at build time.
+**Local image building:** On `start`, each node's image is built from the embedded Dockerfile if it doesn't already exist locally (or if `--rebuild` is passed). Images are tagged `lightnet-<nodeType>:<version>` (e.g. `lightnet-lnd:0.20.1-beta`). The Dockerfiles accept a version as a build arg (`BITCOIN_VERSION`, `LND_VERSION`, `CLN_VERSION`, `LDK_SERVER_VERSION`) and download the appropriate release binary at build time.
 
 ## Network YAML Schema
 
@@ -93,24 +95,16 @@ name: mynetwork
 bitcoind:
   - name: btc1
     version: "30.2"     # controls which release is downloaded in the Dockerfile build
-    rpc_port: 18443     # host-mapped (default: 18443+i)
-    p2p_port: 18444     # host-mapped (default: 18444+i)
 lnd:
   - name: alice
     version: "0.20.1-beta"
-    grpc_port: 10009    # default: 10009+i
-    rest_port: 8080     # default: 8080+i
-    p2p_port: 9735      # default: 9735+i
     connects_to: btc1   # defaults to first bitcoind
 cln:
   - name: carol
-    version: "25.12"    # optional
-    grpc_port: 9736
-    p2p_port: 19735
+    version: "25.12"
     connects_to: btc1
-ldk_server:             # stub — no image available yet
+ldk_server:
   - name: dave
-    rest_port: 3000
     connects_to: btc1
 ```
 

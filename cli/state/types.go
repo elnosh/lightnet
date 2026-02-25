@@ -41,6 +41,8 @@ type ConnectionInfo struct {
 	LDKRESTUrl string `json:"ldk_rest_url,omitempty"`
 
 	// P2P — all node types
+	// Pubkey is the node's Lightning public key (hex). Only set for LN nodes.
+	Pubkey string `json:"pubkey,omitempty"`
 	// P2PInternal is the address reachable from other containers in the same
 	// Docker network (container-name:port, resolved via Docker DNS).
 	P2PInternal string `json:"p2p_internal,omitempty"`

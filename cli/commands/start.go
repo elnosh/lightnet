@@ -255,6 +255,12 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				return
 			}
 
+			pubkey, err := nodes.FetchLNDPubkey(ctx, c, containerName, grpcPort)
+			if err != nil {
+				results <- startResult{name: lndCfg.Name, err: fmt.Errorf("lnd %s pubkey: %w", lndCfg.Name, err)}
+				return
+			}
+
 			macaroonPath := filepath.Join(home, ".lightnet", "networks", cfg.Name, lndCfg.Name, "data", "data", "chain", "bitcoin", "regtest", "admin.macaroon")
 			tlsCertPath := filepath.Join(home, ".lightnet", "networks", cfg.Name, lndCfg.Name, "data", "tls.cert")
 
@@ -268,6 +274,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 						RESTUrl:      fmt.Sprintf("https://localhost:%d", restPort),
 						MacaroonPath: macaroonPath,
 						TLSCertPath:  tlsCertPath,
+						Pubkey:       pubkey,
 						P2PInternal:  fmt.Sprintf("%s:%d", containerName, nodes.LNDP2PContainerPort),
 						P2PExternal:  fmt.Sprintf("127.0.0.1:%d", p2pPort),
 					},
@@ -342,6 +349,12 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				return
 			}
 
+			pubkey, err := nodes.FetchCLNPubkey(ctx, c, containerName)
+			if err != nil {
+				results <- startResult{name: clnCfg.Name, err: fmt.Errorf("cln %s pubkey: %w", clnCfg.Name, err)}
+				return
+			}
+
 			rpcSocket := filepath.Join(home, ".lightnet", "networks", cfg.Name, clnCfg.Name, "data", "regtest", "lightning-rpc")
 
 			results <- startResult{
@@ -352,6 +365,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 					Connection: state.ConnectionInfo{
 						GRPCUrl:       fmt.Sprintf("localhost:%d", grpcPort),
 						RPCSocketPath: rpcSocket,
+						Pubkey:        pubkey,
 						P2PInternal:   fmt.Sprintf("%s:%d", containerName, nodes.CLNP2PContainerPort),
 						P2PExternal:   fmt.Sprintf("127.0.0.1:%d", p2pPort),
 					},
@@ -432,6 +446,12 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				return
 			}
 
+			pubkey, err := nodes.FetchLDKPubkey(ctx, c, containerName)
+			if err != nil {
+				results <- startResult{name: ldkCfg.Name, err: fmt.Errorf("ldk %s pubkey: %w", ldkCfg.Name, err)}
+				return
+			}
+
 			results <- startResult{
 				name: ldkCfg.Name,
 				state: state.NodeState{
@@ -439,6 +459,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 					ContainerName: containerName,
 					Connection: state.ConnectionInfo{
 						LDKRESTUrl:  fmt.Sprintf("https://localhost:%d", restPort),
+						Pubkey:      pubkey,
 						P2PInternal: fmt.Sprintf("%s:%d", containerName, nodes.LDKP2PContainerPort),
 						P2PExternal: fmt.Sprintf("127.0.0.1:%d", p2pPort),
 					},

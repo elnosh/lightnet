@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,6 +87,22 @@ func GenerateLDKConfig(networkName, nodeName, bitcoindContainer string, bitcoind
 	}
 
 	return dataDir, nil
+}
+
+// FetchLDKPubkey returns the node's identity pubkey via ldk-cli get-node-info.
+func FetchLDKPubkey(ctx context.Context, c *client.Client, containerName string) (string, error) {
+	cmd := append(append([]string{}, ldkCLIBase...), "get-node-info")
+	out, err := dockerpkg.ExecOutput(ctx, c, containerName, cmd)
+	if err != nil {
+		return "", err
+	}
+	var info struct {
+		NodeID string `json:"node_id"`
+	}
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return "", fmt.Errorf("parsing ldk-cli get-node-info: %w", err)
+	}
+	return info.NodeID, nil
 }
 
 // WaitLDKReady polls ldk-server-cli get-node-info until the server is ready.

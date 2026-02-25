@@ -81,6 +81,9 @@ func printNodeInfo(name string, n state.NodeState) {
 }
 
 func printP2P(c state.ConnectionInfo) {
+	if c.Pubkey != "" {
+		fmt.Printf("  Pubkey:         %s\n", c.Pubkey)
+	}
 	if c.P2PInternal != "" || c.P2PExternal != "" {
 		fmt.Printf("  P2P (internal): %s\n", c.P2PInternal)
 		fmt.Printf("  P2P (external): %s\n", c.P2PExternal)

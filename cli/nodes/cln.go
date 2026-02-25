@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,6 +58,22 @@ func GenerateCLNConfig(networkName, nodeName, bitcoindContainer string, bitcoind
 	}
 
 	return dataDir, nil
+}
+
+// FetchCLNPubkey returns the node's identity pubkey via lightning-cli getinfo.
+func FetchCLNPubkey(ctx context.Context, c *client.Client, containerName string) (string, error) {
+	cmd := []string{"lightning-cli", "--network=regtest", "getinfo"}
+	out, err := dockerpkg.ExecOutput(ctx, c, containerName, cmd)
+	if err != nil {
+		return "", err
+	}
+	var info struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return "", fmt.Errorf("parsing lightning-cli getinfo: %w", err)
+	}
+	return info.ID, nil
 }
 
 // WaitCLNReady polls lightning-cli getinfo until CLN is ready.

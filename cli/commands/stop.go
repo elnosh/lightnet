@@ -28,18 +28,17 @@ func RunStop(networkName string, remove bool) error {
 		if err := dockerpkg.StopContainer(ctx, c, n.ContainerName); err != nil {
 			fmt.Printf("  warning: %v\n", err)
 		}
-		if remove {
-			if err := dockerpkg.RemoveContainer(ctx, c, n.ContainerName); err != nil {
-				fmt.Printf("  warning: %v\n", err)
-			}
+		if err := dockerpkg.RemoveContainer(ctx, c, n.ContainerName); err != nil {
+			fmt.Printf("  warning: %v\n", err)
 		}
 	}
 
+	fmt.Printf("Removing Docker network %s...\n", net.DockerNetwork)
+	if err := dockerpkg.RemoveNetwork(ctx, c, networkName); err != nil {
+		fmt.Printf("  warning: %v\n", err)
+	}
+
 	if remove {
-		fmt.Printf("Removing Docker network %s...\n", net.DockerNetwork)
-		if err := dockerpkg.RemoveNetwork(ctx, c, networkName); err != nil {
-			fmt.Printf("  warning: %v\n", err)
-		}
 		if err := state.RemoveNetwork(networkName); err != nil {
 			return fmt.Errorf("removing network from state: %w", err)
 		}
@@ -55,7 +54,7 @@ func RunStop(networkName string, remove bool) error {
 		if err := state.UpdateNetworkStatus(networkName, "stopped"); err != nil {
 			return fmt.Errorf("updating state: %w", err)
 		}
-		fmt.Printf("Network %q stopped. Use --remove to also remove containers.\n", networkName)
+		fmt.Printf("Network %q stopped. Run 'lightnet start' to restart with existing data.\n", networkName)
 	}
 
 	return nil

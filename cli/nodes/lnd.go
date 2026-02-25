@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,6 +95,29 @@ func GenerateLNDConfig(networkName, nodeName, bitcoindContainer string, bitcoind
 	}
 
 	return dataDir, nil
+}
+
+// FetchLNDPubkey returns the node's identity pubkey via lncli getinfo.
+func FetchLNDPubkey(ctx context.Context, c *client.Client, containerName string, grpcPort int) (string, error) {
+	cmd := []string{
+		"lncli",
+		fmt.Sprintf("--rpcserver=localhost:%d", grpcPort),
+		"--network=regtest",
+		"--tlscertpath=/home/lnd/.lnd/tls.cert",
+		"--macaroonpath=/home/lnd/.lnd/data/chain/bitcoin/regtest/admin.macaroon",
+		"getinfo",
+	}
+	out, err := dockerpkg.ExecOutput(ctx, c, containerName, cmd)
+	if err != nil {
+		return "", err
+	}
+	var info struct {
+		IdentityPubkey string `json:"identity_pubkey"`
+	}
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return "", fmt.Errorf("parsing lncli getinfo: %w", err)
+	}
+	return info.IdentityPubkey, nil
 }
 
 // WaitLNDReady polls lncli listchannels until LND's server is fully ready.

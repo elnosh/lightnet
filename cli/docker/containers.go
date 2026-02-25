@@ -92,6 +92,7 @@ func CreateContainer(ctx context.Context, c *client.Client, opts CreateContainer
 			PortBindings: portBindings,
 			Mounts:       mounts,
 			NetworkMode:  container.NetworkMode(opts.NetworkName),
+			ExtraHosts:   []string{"host.docker.internal:host-gateway"},
 		},
 		NetworkingConfig: &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
