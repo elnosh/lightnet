@@ -14,6 +14,7 @@ import (
 	"github.com/elnosh/lightnet/cli/dockerfiles"
 	"github.com/elnosh/lightnet/cli/nodes"
 	"github.com/elnosh/lightnet/cli/state"
+	"github.com/moby/moby/client"
 )
 
 const (
@@ -52,6 +53,23 @@ func (a *portAllocator) next(base int) (int, error) {
 		return port, nil
 	}
 	return 0, fmt.Errorf("no free port found near %d", base)
+}
+
+// ensureImage returns the local image tag for nodeType:version, building it
+// from the embedded Dockerfiles if it doesn't exist or rebuild is true.
+func ensureImage(ctx context.Context, c *client.Client, nodeType, version, buildArgKey string, rebuild bool) (string, error) {
+	imageTag := dockerpkg.LocalImageName(nodeType, version)
+	exists, err := dockerpkg.ImageExists(ctx, c, imageTag)
+	if err != nil {
+		return "", err
+	}
+	if !exists || rebuild {
+		fmt.Printf("Building image %s...\n", imageTag)
+		if err := dockerpkg.BuildImage(ctx, c, dockerfiles.FS, nodeType, buildArgKey, version, imageTag); err != nil {
+			return "", err
+		}
+	}
+	return imageTag, nil
 }
 
 // RunStart starts a network defined by nameOrPath (a YAML file or network name).
@@ -115,16 +133,9 @@ func RunStart(nameOrPath string, rebuild bool) error {
 			return fmt.Errorf("bitcoind %s config: %w", btc.Name, err)
 		}
 
-		imageTag := dockerpkg.LocalImageName("bitcoind", btc.Version)
-		exists, err := dockerpkg.ImageExists(ctx, c, imageTag)
+		imageTag, err := ensureImage(ctx, c, "bitcoind", btc.Version, "BITCOIN_VERSION", rebuild)
 		if err != nil {
 			return err
-		}
-		if !exists || rebuild {
-			fmt.Printf("Building image %s...\n", imageTag)
-			if err := dockerpkg.BuildImage(ctx, c, dockerfiles.FS, "bitcoind", "BITCOIN_VERSION", btc.Version, imageTag); err != nil {
-				return err
-			}
 		}
 
 		opts := dockerpkg.CreateContainerOptions{
@@ -200,7 +211,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		}
 
 		wg.Add(1)
-		go func(lndCfg config.LNDConfig, grpcPort, restPort, p2pPort int) {
+		go func(lndCfg config.LightningNodeConfig, grpcPort, restPort, p2pPort int) {
 			defer wg.Done()
 			containerName := dockerpkg.ContainerName(cfg.Name, lndCfg.Name)
 			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, lndCfg.ConnectsTo)
@@ -212,18 +223,10 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				return
 			}
 
-			imageTag := dockerpkg.LocalImageName("lnd", lndCfg.Version)
-			exists, err := dockerpkg.ImageExists(ctx, c, imageTag)
+			imageTag, err := ensureImage(ctx, c, "lnd", lndCfg.Version, "LND_VERSION", rebuild)
 			if err != nil {
 				results <- startResult{name: lndCfg.Name, err: err}
 				return
-			}
-			if !exists || rebuild {
-				fmt.Printf("Building image %s...\n", imageTag)
-				if err := dockerpkg.BuildImage(ctx, c, dockerfiles.FS, "lnd", "LND_VERSION", lndCfg.Version, imageTag); err != nil {
-					results <- startResult{name: lndCfg.Name, err: err}
-					return
-				}
 			}
 
 			opts := dockerpkg.CreateContainerOptions{
@@ -295,7 +298,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		}
 
 		wg.Add(1)
-		go func(clnCfg config.CLNConfig, grpcPort, p2pPort int) {
+		go func(clnCfg config.LightningNodeConfig, grpcPort, p2pPort int) {
 			defer wg.Done()
 			containerName := dockerpkg.ContainerName(cfg.Name, clnCfg.Name)
 			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, clnCfg.ConnectsTo)
@@ -307,18 +310,10 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				return
 			}
 
-			imageTag := dockerpkg.LocalImageName("clightning", clnCfg.Version)
-			exists, err := dockerpkg.ImageExists(ctx, c, imageTag)
+			imageTag, err := ensureImage(ctx, c, "clightning", clnCfg.Version, "CLN_VERSION", rebuild)
 			if err != nil {
 				results <- startResult{name: clnCfg.Name, err: err}
 				return
-			}
-			if !exists || rebuild {
-				fmt.Printf("Building image %s...\n", imageTag)
-				if err := dockerpkg.BuildImage(ctx, c, dockerfiles.FS, "clightning", "CLN_VERSION", clnCfg.Version, imageTag); err != nil {
-					results <- startResult{name: clnCfg.Name, err: err}
-					return
-				}
 			}
 
 			opts := dockerpkg.CreateContainerOptions{
@@ -386,7 +381,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		}
 
 		wg.Add(1)
-		go func(ldkCfg config.LDKConfig, restPort, p2pPort int) {
+		go func(ldkCfg config.LightningNodeConfig, restPort, p2pPort int) {
 			defer wg.Done()
 			containerName := dockerpkg.ContainerName(cfg.Name, ldkCfg.Name)
 			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, ldkCfg.ConnectsTo)
@@ -398,18 +393,10 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				return
 			}
 
-			imageTag := dockerpkg.LocalImageName("ldk", "latest")
-			exists, err := dockerpkg.ImageExists(ctx, c, imageTag)
+			imageTag, err := ensureImage(ctx, c, "ldk-server", "latest", "", rebuild)
 			if err != nil {
 				results <- startResult{name: ldkCfg.Name, err: err}
 				return
-			}
-			if !exists || rebuild {
-				fmt.Printf("Building image %s...\n", imageTag)
-				if err := dockerpkg.BuildImage(ctx, c, dockerfiles.FS, "ldk-server", "", "", imageTag); err != nil {
-					results <- startResult{name: ldkCfg.Name, err: err}
-					return
-				}
 			}
 
 			opts := dockerpkg.CreateContainerOptions{

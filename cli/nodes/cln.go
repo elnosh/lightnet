@@ -78,22 +78,6 @@ func FetchCLNPubkey(ctx context.Context, c *client.Client, containerName string)
 
 // WaitCLNReady polls lightning-cli getinfo until CLN is ready.
 func WaitCLNReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
 	cmd := []string{"lightning-cli", "--network=regtest", "getinfo"}
-
-	for time.Now().Before(deadline) {
-		execCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := dockerpkg.ExecOutput(execCtx, c, containerName, cmd)
-		cancel()
-		if err == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("cln %q did not become ready within %s", containerName, timeout)
+	return pollUntilReady(ctx, c, containerName, timeout, cmd, "cln")
 }

@@ -126,7 +126,6 @@ func FetchLNDPubkey(ctx context.Context, c *client.Client, containerName string,
 // succeeds once the full server is up.
 // grpcPort is the port LND listens on inside the container.
 func WaitLNDReady(ctx context.Context, c *client.Client, containerName string, grpcPort int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
 	cmd := []string{
 		"lncli",
 		fmt.Sprintf("--rpcserver=localhost:%d", grpcPort),
@@ -135,20 +134,5 @@ func WaitLNDReady(ctx context.Context, c *client.Client, containerName string, g
 		"--macaroonpath=/home/lnd/.lnd/data/chain/bitcoin/regtest/admin.macaroon",
 		"listchannels",
 	}
-
-	for time.Now().Before(deadline) {
-		execCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := dockerpkg.ExecOutput(execCtx, c, containerName, cmd)
-		cancel()
-		if err == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("lnd %q did not become ready within %s", containerName, timeout)
+	return pollUntilReady(ctx, c, containerName, timeout, cmd, "lnd")
 }

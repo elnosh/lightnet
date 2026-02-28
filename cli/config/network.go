@@ -4,9 +4,9 @@ package config
 type NetworkConfig struct {
 	Name      string        `yaml:"name"`
 	Bitcoind  []BitcoindConfig `yaml:"bitcoind"`
-	LND       []LNDConfig      `yaml:"lnd"`
-	CLN       []CLNConfig      `yaml:"cln"`
-	LDKServer []LDKConfig      `yaml:"ldk_server"`
+	LND       []LightningNodeConfig `yaml:"lnd"`
+	CLN       []LightningNodeConfig `yaml:"cln"`
+	LDKServer []LightningNodeConfig `yaml:"ldk_server"`
 }
 
 type BitcoindConfig struct {
@@ -14,19 +14,7 @@ type BitcoindConfig struct {
 	Version string `yaml:"version"`
 }
 
-type LNDConfig struct {
-	Name       string `yaml:"name"`
-	Version    string `yaml:"version"`
-	ConnectsTo string `yaml:"connects_to"`
-}
-
-type CLNConfig struct {
-	Name       string `yaml:"name"`
-	Version    string `yaml:"version"`
-	ConnectsTo string `yaml:"connects_to"`
-}
-
-type LDKConfig struct {
+type LightningNodeConfig struct {
 	Name       string `yaml:"name"`
 	Version    string `yaml:"version"`
 	ConnectsTo string `yaml:"connects_to"`

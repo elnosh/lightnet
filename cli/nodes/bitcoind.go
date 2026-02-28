@@ -39,14 +39,12 @@ type BitcoindNode struct {
 
 func (b *BitcoindNode) Kind() string { return "bitcoind" }
 
+func bitcoindRPCBase() []string {
+	return []string{"bitcoin-cli", "-regtest", "-rpcuser=lightnet", "-rpcpassword=lightnet"}
+}
+
 func (b *BitcoindNode) BuildCommand(userArgs []string) []string {
-	base := []string{
-		"bitcoin-cli",
-		"-regtest",
-		"-rpcuser=lightnet",
-		"-rpcpassword=lightnet",
-	}
-	return append(base, userArgs...)
+	return append(bitcoindRPCBase(), userArgs...)
 }
 
 // GenerateBitcoindConfig writes bitcoin.conf to the node's config directory and
@@ -80,7 +78,7 @@ func GenerateBitcoindConfig(networkName, nodeName string) (string, error) {
 // This must be called before starting lightning nodes: LND/CLN wait on
 // "chain backend finish sync" and will never complete if bitcoind stays in IBD.
 func MineInitialBlocks(ctx context.Context, c *client.Client, containerName string, numBlocks int) error {
-	rpcBase := []string{"bitcoin-cli", "-regtest", "-rpcuser=lightnet", "-rpcpassword=lightnet"}
+	rpcBase := bitcoindRPCBase()
 
 	// Create the mining wallet; if it already exists, load it.
 	_, err := dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "createwallet", "test"))
@@ -108,26 +106,6 @@ func MineInitialBlocks(ctx context.Context, c *client.Client, containerName stri
 
 // WaitUntilReady polls bitcoin-cli getblockchaininfo until it succeeds or times out.
 func WaitUntilReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	cmd := []string{
-		"bitcoin-cli", "-regtest",
-		"-rpcuser=lightnet", "-rpcpassword=lightnet",
-		"getblockchaininfo",
-	}
-
-	for time.Now().Before(deadline) {
-		execCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := dockerpkg.ExecOutput(execCtx, c, containerName, cmd)
-		cancel()
-		if err == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("bitcoind %q did not become ready within %s", containerName, timeout)
+	cmd := append(bitcoindRPCBase(), "getblockchaininfo")
+	return pollUntilReady(ctx, c, containerName, timeout, cmd, "bitcoind")
 }

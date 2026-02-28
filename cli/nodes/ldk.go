@@ -107,22 +107,6 @@ func FetchLDKPubkey(ctx context.Context, c *client.Client, containerName string)
 
 // WaitLDKReady polls ldk-server-cli get-node-info until the server is ready.
 func WaitLDKReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
 	cmd := append(append([]string{}, ldkCLIBase...), "get-node-info")
-
-	for time.Now().Before(deadline) {
-		execCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := dockerpkg.ExecOutput(execCtx, c, containerName, cmd)
-		cancel()
-		if err == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("ldk-server %q did not become ready within %s", containerName, timeout)
+	return pollUntilReady(ctx, c, containerName, timeout, cmd, "ldk-server")
 }
