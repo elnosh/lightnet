@@ -9,13 +9,12 @@ import (
 	"github.com/elnosh/lightnet/cli/state"
 )
 
-func RunFund(networkName, address string, amount float64) error {
+func RunCreateBlocks(networkName string, count int) error {
 	net, err := state.GetNetwork(networkName)
 	if err != nil {
 		return err
 	}
 
-	// Find the first bitcoind node (holds the test wallet with all funds)
 	var btcContainer string
 	for _, n := range net.Nodes {
 		if n.Kind == "bitcoind" {
@@ -35,15 +34,6 @@ func RunFund(networkName, address string, amount float64) error {
 
 	rpcBase := []string{"bitcoin-cli", "-regtest", "-rpcuser=lightnet", "-rpcpassword=lightnet"}
 
-	// Send to address from the test wallet (funded with 101 blocks at startup)
-	txidOut, err := dockerpkg.ExecOutput(ctx, c, btcContainer,
-		append(rpcBase, "-rpcwallet=test", "sendtoaddress", address, fmt.Sprintf("%.8f", amount)))
-	if err != nil {
-		return fmt.Errorf("sendtoaddress: %w", err)
-	}
-	txid := strings.TrimSpace(txidOut)
-
-	// Get a fresh address to mine the confirming blocks to (keeps funds in the test wallet)
 	addrOut, err := dockerpkg.ExecOutput(ctx, c, btcContainer,
 		append(rpcBase, "-rpcwallet=test", "getnewaddress", "", "bech32"))
 	if err != nil {
@@ -51,15 +41,12 @@ func RunFund(networkName, address string, amount float64) error {
 	}
 	miningAddr := strings.TrimSpace(addrOut)
 
-	// Mine 10 blocks (no -rpcwallet needed — destination is explicit)
 	_, err = dockerpkg.ExecOutput(ctx, c, btcContainer,
-		append(rpcBase, "generatetoaddress", "10", miningAddr))
+		append(rpcBase, "generatetoaddress", fmt.Sprintf("%d", count), miningAddr))
 	if err != nil {
-		return fmt.Errorf("mining confirming blocks: %w", err)
+		return fmt.Errorf("generatetoaddress: %w", err)
 	}
 
-	fmt.Printf("Funded %s with %.8f BTC\n", address, amount)
-	fmt.Printf("txid: %s\n", txid)
-	fmt.Printf("10 blocks mined.\n")
+	fmt.Printf("Mined %d blocks.\n", count)
 	return nil
 }

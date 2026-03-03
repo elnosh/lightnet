@@ -97,6 +97,42 @@ var fundCmd = &cobra.Command{
 	},
 }
 
+var createBlocksCmd = &cobra.Command{
+	Use:   "createblocks <network> <count>",
+	Short: "Mine N blocks using the bitcoind test wallet",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		n, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid count %q: %v\n", args[1], err)
+			os.Exit(1)
+		}
+		if err := commands.RunCreateBlocks(args[0], n); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return nil
+	},
+}
+
+var openChannelCmd = &cobra.Command{
+	Use:   "openchannel <network> <from> <to> <amount>",
+	Short: "Open a Lightning channel between two nodes",
+	Args:  cobra.ExactArgs(4),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		amount, err := strconv.ParseInt(args[3], 10, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid amount %q: %v\n", args[3], err)
+			os.Exit(1)
+		}
+		if err := commands.RunOpenChannel(args[0], args[1], args[2], amount); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return nil
+	},
+}
+
 func init() {
 	startCmd.Flags().BoolVar(&rebuildImages, "rebuild", false, "Rebuild images even if they already exist locally")
 	stopCmd.Flags().BoolVar(&removeContainers, "remove", false, "Remove containers after stopping")
@@ -106,4 +142,6 @@ func init() {
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(fundCmd)
+	rootCmd.AddCommand(createBlocksCmd)
+	rootCmd.AddCommand(openChannelCmd)
 }

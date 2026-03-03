@@ -10,15 +10,17 @@ import (
 )
 
 var knownCmds = map[string]bool{
-	"start":   true,
-	"stop":    true,
-	"info":    true,
-	"list":    true,
-	"fund":    true,
-	"help":    true,
-	"--help":  true,
-	"-h":      true,
-	"version": true,
+	"start":        true,
+	"stop":         true,
+	"info":         true,
+	"list":         true,
+	"fund":         true,
+	"createblocks": true,
+	"openchannel":  true,
+	"help":         true,
+	"--help":       true,
+	"-h":           true,
+	"version":      true,
 }
 
 func main() {
