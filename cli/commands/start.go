@@ -387,7 +387,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, ldkCfg.ConnectsTo)
 			btcRPCPort := bitcoindRPCPorts[bitcoindContainer]
 
-			dataDir, err := nodes.GenerateLDKConfig(cfg.Name, ldkCfg.Name, bitcoindContainer, btcRPCPort, p2pPort)
+			dataDir, err := nodes.GenerateLDKConfig(cfg.Name, ldkCfg.Name, bitcoindContainer, btcRPCPort)
 			if err != nil {
 				results <- startResult{name: ldkCfg.Name, err: fmt.Errorf("ldk %s config: %w", ldkCfg.Name, err)}
 				return

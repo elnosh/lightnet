@@ -20,7 +20,7 @@ const LDKP2PContainerPort = 3001
 
 const ldkConfTemplate = `[node]
 network = "regtest"                           # Bitcoin network to use
-listening_addresses = ["0.0.0.0:%d"]        # Lightning node listening addresses
+listening_addresses = ["0.0.0.0:3001"]        # Lightning node listening addresses
 #announcement_addresses = ["54.3.7.81:3001"] # Lightning node announcement addresses
 rest_service_address = "0.0.0.0:3002"       # LDK Server REST address
 alias = "test"                               # Lightning node alias
@@ -64,7 +64,7 @@ func (n *LDKNode) BuildCommand(userArgs []string) []string {
 // GenerateLDKConfig creates the data directory for an ldk-server node and
 // returns the host path for bind-mounting. Configuration is passed via
 // environment variables at container start time.
-func GenerateLDKConfig(networkName, nodeName, bitcoindContainer string, bitcoindRPCPort, p2pPort int) (string, error) {
+func GenerateLDKConfig(networkName, nodeName, bitcoindContainer string, bitcoindRPCPort int) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -76,7 +76,6 @@ func GenerateLDKConfig(networkName, nodeName, bitcoindContainer string, bitcoind
 	}
 
 	conf := fmt.Sprintf(ldkConfTemplate,
-		p2pPort,
 		bitcoindContainer,
 		bitcoindRPCPort,
 	)
