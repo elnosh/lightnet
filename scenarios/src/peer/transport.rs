@@ -98,8 +98,6 @@ impl EncryptedTransport {
         let mut header = [0u8; 18];
         self.stream.read_exact(&mut header).await?;
 
-        println!("read header bytes {:?}", header);
-
         let msg_len = self
             .encryptor
             .decrypt_length_header(&header)
@@ -108,7 +106,6 @@ impl EncryptedTransport {
         // Encrypted body: msg_len bytes + 16-byte MAC
         let mut body = vec![0u8; msg_len as usize + 16];
         self.stream.read_exact(&mut body).await?;
-        println!("read body bytes {:?}", body);
 
         self.encryptor
             .decrypt_message(&mut body)
@@ -130,12 +127,17 @@ pub(crate) async fn perform_outbound(
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default();
-    let keys_manager = KeysManager::new(&our_key.secret_bytes(), now.as_secs(), now.subsec_nanos(), true);
+    let keys_manager = KeysManager::new(
+        &our_key.secret_bytes(),
+        now.as_secs(),
+        now.subsec_nanos(),
+        true,
+    );
 
     let mut key_bytes = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut key_bytes);
-    let ephemeral = SecretKey::from_slice(&key_bytes)
-        .map_err(|e| Error::Handshake(e.to_string()))?;
+    let ephemeral =
+        SecretKey::from_slice(&key_bytes).map_err(|e| Error::Handshake(e.to_string()))?;
 
     let mut encryptor = PeerChannelEncryptor::new_outbound(their_pubkey, ephemeral);
 

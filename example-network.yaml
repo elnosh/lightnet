@@ -20,6 +20,10 @@ lnd:
     version: "0.20.1-beta"
     connects_to: btc1
 
+  - name: charlie
+    version: "0.20.1-beta"
+    connects_to: btc1
+
 # --- Core Lightning nodes ---
 # cln:
 #   - name: carol
