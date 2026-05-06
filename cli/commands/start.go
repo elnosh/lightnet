@@ -79,17 +79,28 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		return err
 	}
 
-	// Check if already running
-	existing, _ := state.GetNetwork(cfg.Name)
-	if existing != nil && existing.Status == "running" {
-		return fmt.Errorf("network %q is already running", cfg.Name)
-	}
-
 	c, err := dockerpkg.NewClient()
 	if err != nil {
 		return err
 	}
 	ctx := context.Background()
+
+	// Reconcile any prior state with reality. If state.json says the network is
+	// running but Docker disagrees (e.g. host was shut down without `lightnet
+	// stop`), clear out the stale containers and docker network so we can start
+	// fresh. Data directories are preserved, so node identities persist.
+	existing, _ := state.GetNetwork(cfg.Name)
+	if existing != nil && existing.Status == "running" {
+		stale, err := isStaleNetwork(ctx, c, existing)
+		if err != nil {
+			return err
+		}
+		if !stale {
+			return fmt.Errorf("network %q is already running", cfg.Name)
+		}
+		fmt.Printf("Network %q has stale state (containers not running); cleaning up before restart...\n", cfg.Name)
+		cleanupStaleNetwork(ctx, c, existing)
+	}
 
 	dockerNet := dockerpkg.NetworkName(cfg.Name)
 
@@ -479,4 +490,36 @@ func RunStart(nameOrPath string, rebuild bool) error {
 	printNetworkInfo(networkState)
 
 	return nil
+}
+
+// isStaleNetwork returns true if state.json claims the network is running but
+// any of its containers is not actually running according to Docker.
+func isStaleNetwork(ctx context.Context, c *client.Client, net *state.RunningNetwork) (bool, error) {
+	for _, n := range net.Nodes {
+		running, err := dockerpkg.ContainerRunning(ctx, c, n.ContainerName)
+		if err != nil {
+			return false, err
+		}
+		if !running {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// cleanupStaleNetwork removes containers and the docker bridge network left
+// over from a prior run. Best-effort: errors (e.g. container already gone) are
+// logged but not fatal. Data directories under ~/.lightnet/networks/<name>/
+// are NOT touched, so node identities and chain state persist.
+func cleanupStaleNetwork(ctx context.Context, c *client.Client, net *state.RunningNetwork) {
+	for nodeName, n := range net.Nodes {
+		// RemoveContainer uses Force=true which stops a running container
+		// before removing it, so a separate Stop call isn't needed.
+		if err := dockerpkg.RemoveContainer(ctx, c, n.ContainerName); err != nil {
+			fmt.Printf("  warning: removing %s: %v\n", nodeName, err)
+		}
+	}
+	if err := dockerpkg.RemoveNetwork(ctx, c, net.Name); err != nil {
+		fmt.Printf("  warning: removing docker network: %v\n", err)
+	}
 }

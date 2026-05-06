@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
@@ -121,6 +122,19 @@ func StopContainer(ctx context.Context, c *client.Client, name string) error {
 		return fmt.Errorf("stopping container %q: %w", name, err)
 	}
 	return nil
+}
+
+// ContainerRunning reports whether a container exists AND is currently running.
+// Returns (false, nil) when the container does not exist.
+func ContainerRunning(ctx context.Context, c *client.Client, name string) (bool, error) {
+	res, err := c.ContainerInspect(ctx, name, client.ContainerInspectOptions{})
+	if err != nil {
+		if cerrdefs.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inspecting container %q: %w", name, err)
+	}
+	return res.Container.State != nil && res.Container.State.Running, nil
 }
 
 // RemoveContainer removes a stopped container.
