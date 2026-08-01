@@ -115,6 +115,24 @@ var createBlocksCmd = &cobra.Command{
 	},
 }
 
+var fillBlockCmd = &cobra.Command{
+	Use:   "fillblock <network> <txs>",
+	Short: "Broadcast N dummy transactions and mine a block containing them",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		n, err := strconv.Atoi(args[1])
+		if err != nil || n < 1 {
+			fmt.Fprintf(os.Stderr, "invalid tx count %q\n", args[1])
+			os.Exit(1)
+		}
+		if err := commands.RunFillBlock(args[0], n); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return nil
+	},
+}
+
 var openChannelCmd = &cobra.Command{
 	Use:   "openchannel <network> <from> <to> <amount>",
 	Short: "Open a Lightning channel between two nodes",
@@ -143,5 +161,6 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(fundCmd)
 	rootCmd.AddCommand(createBlocksCmd)
+	rootCmd.AddCommand(fillBlockCmd)
 	rootCmd.AddCommand(openChannelCmd)
 }

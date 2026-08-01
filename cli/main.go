@@ -16,6 +16,7 @@ var knownCmds = map[string]bool{
 	"list":         true,
 	"fund":         true,
 	"createblocks": true,
+	"fillblock":    true,
 	"openchannel":  true,
 	"help":         true,
 	"--help":       true,
