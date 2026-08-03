@@ -18,6 +18,7 @@ const bitcoinConfTemplate = `regtest=1
 
 [regtest]
 server=1
+rest=1
 rpcuser=lightnet
 rpcpassword=lightnet
 rpcallowip=0.0.0.0/0
