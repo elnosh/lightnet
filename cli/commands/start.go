@@ -27,6 +27,8 @@ const (
 	baseCLNP2P      = 19735
 	baseLDKREST     = 3000
 	baseLDKP2P      = 29735
+	baseEclairAPI   = 8280
+	baseEclairP2P   = 39735
 )
 
 type portAllocator struct {
@@ -459,6 +461,88 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				},
 			}
 		}(ldkCfg, restPort, p2pPort)
+	}
+
+	// Eclair nodes
+	for _, eclairCfg := range cfg.Eclair {
+		apiPort, err := pa.next(baseEclairAPI)
+		if err != nil {
+			return fmt.Errorf("eclair %s: %w", eclairCfg.Name, err)
+		}
+		p2pPort, err := pa.next(baseEclairP2P)
+		if err != nil {
+			return fmt.Errorf("eclair %s: %w", eclairCfg.Name, err)
+		}
+
+		wg.Add(1)
+		go func(eclairCfg config.LightningNodeConfig, apiPort, p2pPort int) {
+			defer wg.Done()
+			containerName := dockerpkg.ContainerName(cfg.Name, eclairCfg.Name)
+			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, eclairCfg.ConnectsTo)
+
+			dataDir, err := nodes.GenerateEclairConfig(cfg.Name, eclairCfg.Name, bitcoindContainer, nodes.BitcoindRPCContainerPort)
+			if err != nil {
+				results <- startResult{name: eclairCfg.Name, err: fmt.Errorf("eclair %s config: %w", eclairCfg.Name, err)}
+				return
+			}
+
+			nodes.EnsureWallet(ctx, c, bitcoindContainer, nodes.EclairWalletName(eclairCfg.Name))
+
+			imageTag, err := ensureImage(ctx, c, "eclair", eclairCfg.Version, "ECLAIR_VERSION", rebuild)
+			if err != nil {
+				results <- startResult{name: eclairCfg.Name, err: err}
+				return
+			}
+
+			opts := dockerpkg.CreateContainerOptions{
+				Name:        containerName,
+				Image:       imageTag,
+				NetworkName: dockerNet,
+				Ports: []dockerpkg.PortBinding{
+					{HostPort: apiPort, ContainerPort: nodes.EclairAPIContainerPort},
+					{HostPort: p2pPort, ContainerPort: nodes.EclairP2PContainerPort},
+				},
+				Mounts: []dockerpkg.VolumeMount{
+					{HostPath: dataDir, ContainerPath: "/home/eclair/.eclair"},
+				},
+			}
+
+			id, err := dockerpkg.CreateContainer(ctx, c, opts)
+			if err != nil {
+				results <- startResult{name: eclairCfg.Name, err: err}
+				return
+			}
+			if err := dockerpkg.StartContainer(ctx, c, id); err != nil {
+				results <- startResult{name: eclairCfg.Name, err: err}
+				return
+			}
+
+			// JVM startup plus bitcoind sync is slower than the other implementations.
+			if err := nodes.WaitEclairReady(ctx, c, containerName, 180*time.Second); err != nil {
+				results <- startResult{name: eclairCfg.Name, err: err}
+				return
+			}
+
+			pubkey, err := nodes.FetchEclairPubkey(ctx, c, containerName)
+			if err != nil {
+				results <- startResult{name: eclairCfg.Name, err: fmt.Errorf("eclair %s pubkey: %w", eclairCfg.Name, err)}
+				return
+			}
+
+			results <- startResult{
+				name: eclairCfg.Name,
+				state: state.NodeState{
+					Kind:          "eclair",
+					ContainerName: containerName,
+					Connection: state.ConnectionInfo{
+						RESTUrl:     fmt.Sprintf("http://localhost:%d", apiPort),
+						Pubkey:      pubkey,
+						P2PInternal: fmt.Sprintf("%s:%d", containerName, nodes.EclairP2PContainerPort),
+						P2PExternal: fmt.Sprintf("127.0.0.1:%d", p2pPort),
+					},
+				},
+			}
+		}(eclairCfg, apiPort, p2pPort)
 	}
 
 	// Collect results

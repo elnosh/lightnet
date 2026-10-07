@@ -83,6 +83,12 @@ func applyDefaults(cfg *NetworkConfig) {
 			cfg.LDKServer[i].ConnectsTo = firstBitcoind
 		}
 	}
+
+	for i := range cfg.Eclair {
+		if cfg.Eclair[i].ConnectsTo == "" {
+			cfg.Eclair[i].ConnectsTo = firstBitcoind
+		}
+	}
 }
 
 func validate(cfg *NetworkConfig) error {
@@ -132,6 +138,14 @@ func validate(cfg *NetworkConfig) error {
 		}
 		if n.ConnectsTo != "" && !bitcoindNames[n.ConnectsTo] {
 			return fmt.Errorf("ldk %q: connects_to %q is not a known bitcoind node", n.Name, n.ConnectsTo)
+		}
+	}
+	for _, n := range cfg.Eclair {
+		if err := addName(n.Name, "eclair"); err != nil {
+			return err
+		}
+		if n.ConnectsTo != "" && !bitcoindNames[n.ConnectsTo] {
+			return fmt.Errorf("eclair %q: connects_to %q is not a known bitcoind node", n.Name, n.ConnectsTo)
 		}
 	}
 

@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 
+	"github.com/elnosh/lightnet/cli/nodes"
 	"github.com/elnosh/lightnet/cli/state"
 )
 
@@ -70,6 +71,10 @@ func printNodeInfo(name string, n state.NodeState) {
 		if n.Connection.LDKRESTUrl != "" {
 			fmt.Printf("  REST:         %s\n", n.Connection.LDKRESTUrl)
 		}
+		printP2P(n.Connection)
+
+	case "eclair":
+		fmt.Printf("  API:          %s (basic auth, empty user, password %q)\n", n.Connection.RESTUrl, nodes.EclairAPIPassword)
 		printP2P(n.Connection)
 
 	default:

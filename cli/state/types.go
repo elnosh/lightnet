@@ -17,7 +17,7 @@ type RunningNetwork struct {
 
 // NodeState holds runtime state and connection info for a single node.
 type NodeState struct {
-	Kind          string         `json:"kind"`           // "bitcoind" | "lnd" | "cln" | "ldk"
+	Kind          string         `json:"kind"`           // "bitcoind" | "lnd" | "cln" | "ldk" | "eclair"
 	ContainerName string         `json:"container_name"`
 	Connection    ConnectionInfo `json:"connection"`
 }

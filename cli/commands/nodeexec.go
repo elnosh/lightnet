@@ -56,6 +56,8 @@ func nodeFromState(name string, ns state.NodeState) (nodes.Node, error) {
 		return &nodes.CLNNode{Name: name, ContainerName: ns.ContainerName}, nil
 	case "ldk":
 		return &nodes.LDKNode{Name: name, ContainerName: ns.ContainerName}, nil
+	case "eclair":
+		return &nodes.EclairNode{Name: name, ContainerName: ns.ContainerName}, nil
 	default:
 		return nil, fmt.Errorf("unknown node kind %q for node %q", ns.Kind, name)
 	}

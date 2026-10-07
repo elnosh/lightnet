@@ -103,19 +103,14 @@ func FetchCLNPubkey(ctx context.Context, c *client.Client, containerName string)
 // be syncing with bitcoind; it reports that via warning_bitcoind_sync /
 // warning_lightningd_sync, so wait until both are gone.
 func WaitCLNReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		execCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		info, err := clnGetinfo(execCtx, c, containerName)
-		cancel()
-		if err == nil && info.WarningBitcoindSync == "" && info.WarningLightningdSync == "" {
-			return nil
+	return pollUntilReady(ctx, c, containerName, timeout, "cln", func(ctx context.Context) error {
+		info, err := clnGetinfo(ctx, c, containerName)
+		if err != nil {
+			return err
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
+		if info.WarningBitcoindSync != "" || info.WarningLightningdSync != "" {
+			return fmt.Errorf("cln still syncing")
 		}
-	}
-	return fmt.Errorf("cln %q did not become ready within %s", containerName, timeout)
+		return nil
+	})
 }

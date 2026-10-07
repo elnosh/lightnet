@@ -19,17 +19,21 @@ type Node interface {
 	BuildCommand(userArgs []string) []string
 }
 
-// pollUntilReady executes cmd inside containerName every second until it
-// succeeds or timeout elapses. label is used in the error message ("bitcoind",
-// "lnd", etc.).
-func pollUntilReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration, cmd []string, label string) error {
+// pollUntilReady gives up early if the container stops running, so a node
+// that crashes on startup doesn't make `start` wait out the full timeout.
+// label is used in the error message ("bitcoind", "lnd", etc.).
+func pollUntilReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration, label string, check func(ctx context.Context) error) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		execCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := dockerpkg.ExecOutput(execCtx, c, containerName, cmd)
+		err := check(execCtx)
 		cancel()
 		if err == nil {
 			return nil
+		}
+		running, rerr := dockerpkg.ContainerRunning(ctx, c, containerName)
+		if rerr == nil && !running {
+			return fmt.Errorf("%s %q exited before becoming ready (see: docker logs %s)", label, containerName, containerName)
 		}
 		select {
 		case <-ctx.Done():
@@ -38,4 +42,11 @@ func pollUntilReady(ctx context.Context, c *client.Client, containerName string,
 		}
 	}
 	return fmt.Errorf("%s %q did not become ready within %s", label, containerName, timeout)
+}
+
+func execSucceeds(c *client.Client, containerName string, cmd []string) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		_, err := dockerpkg.ExecOutput(ctx, c, containerName, cmd)
+		return err
+	}
 }

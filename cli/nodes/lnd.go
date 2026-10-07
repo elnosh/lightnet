@@ -134,5 +134,5 @@ func WaitLNDReady(ctx context.Context, c *client.Client, containerName string, g
 		"--macaroonpath=/home/lnd/.lnd/data/chain/bitcoin/regtest/admin.macaroon",
 		"listchannels",
 	}
-	return pollUntilReady(ctx, c, containerName, timeout, cmd, "lnd")
+	return pollUntilReady(ctx, c, containerName, timeout, "lnd", execSucceeds(c, containerName, cmd))
 }

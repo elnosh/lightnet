@@ -56,17 +56,19 @@ cli/
 ├── docker/              # Thin wrappers around Docker SDK (client, network, containers, exec)
 │   └── images.go        # LocalImageName, ImageExists, BuildImage (builds from embedded FS)
 ├── dockerfiles/         # Embedded Dockerfiles and support files (embed.go bundles these into binary)
-│   ├── embed.go         # //go:embed all:bitcoind all:lnd all:clightning all:ldk-server
+│   ├── embed.go         # //go:embed all:bitcoind all:lnd all:clightning all:ldk-server all:eclair
 │   ├── bitcoind/        # Dockerfile, docker-entrypoint.sh, bashrc
 │   ├── lnd/             # Dockerfile, docker-entrypoint.sh, bashrc
 │   ├── clightning/      # Dockerfile, docker-entrypoint.sh, bashrc
-│   └── ldk-server/      # Dockerfile, docker-entrypoint.sh, bashrc
+│   ├── ldk-server/      # Dockerfile, docker-entrypoint.sh, bashrc
+│   └── eclair/          # Dockerfile (Maven build from the ACINQ tag), docker-entrypoint.sh, bashrc
 ├── nodes/               # Per-node-type config generation + readiness polling
 │   ├── node.go          # Node interface: Kind() + BuildCommand(userArgs)
 │   ├── bitcoind.go
 │   ├── lnd.go
 │   ├── cln.go
-│   └── ldk.go
+│   ├── ldk.go
+│   └── eclair.go
 └── state/
     ├── types.go         # GlobalState / RunningNetwork / NodeState / ConnectionInfo
     └── manager.go       # Load/Save/AddNetwork/RemoveNetwork — persists to ~/.lightnet/state.json
@@ -80,13 +82,15 @@ cli/
 
 **Container naming:** `lightnet-<networkName>-<nodeName>` (see `docker.ContainerName`).
 
-**Readiness polling:** Bitcoind nodes use `bitcoin-cli getblockchaininfo` polling. LND uses `lncli listchannels` (not `getinfo`, which succeeds too early). CLN uses a similar exec poll. Initial 101 blocks are mined on bitcoind startup so lightning nodes don't see `initialblockdownload=true`.
+**Readiness polling:** Bitcoind nodes use `bitcoin-cli getblockchaininfo` polling. LND uses `lncli listchannels` (not `getinfo`, which succeeds too early). CLN polls `getinfo` until its sync warnings clear. Eclair polls `eclair-cli getinfo` until it returns a `nodeId`. Initial 101 blocks are mined on bitcoind startup so lightning nodes don't see `initialblockdownload=true`.
 
-**LN nodes start concurrently:** All LND and CLN nodes for a network start in parallel goroutines after bitcoind is ready; results are collected via a channel.
+**Eclair has no wallet of its own:** it uses a bitcoind wallet over RPC, so `start` creates a wallet named `eclair-<node>` on the node's bitcoind. Eclair also needs bitcoind's `hashblock` ZMQ topic, published on 28334.
+
+**LN nodes start concurrently:** All LN nodes (LND, CLN, LDK, eclair) for a network start in parallel goroutines after bitcoind is ready; results are collected via a channel.
 
 **Node interface:** Each node type implements `BuildCommand(userArgs []string) []string` which translates bare user args (e.g. `["listchannels"]`) into the full `docker exec` command (e.g. `["lncli", "--network=regtest", ..., "listchannels"]`).
 
-**Local image building:** On `start`, each node's image is built from the embedded Dockerfile if it doesn't already exist locally (or if `--rebuild` is passed). Images are tagged `lightnet-<nodeType>:<version>` (e.g. `lightnet-lnd:0.20.1-beta`). The Dockerfiles accept a version as a build arg (`BITCOIN_VERSION`, `LND_VERSION`, `CLN_VERSION`, `LDK_SERVER_VERSION`) and download the appropriate release binary at build time.
+**Local image building:** On `start`, each node's image is built from the embedded Dockerfile if it doesn't already exist locally (or if `--rebuild` is passed). Images are tagged `lightnet-<nodeType>:<version>` (e.g. `lightnet-lnd:0.20.1-beta`). The Dockerfiles accept a version as a build arg (`BITCOIN_VERSION`, `LND_VERSION`, `CLN_VERSION`, `ECLAIR_VERSION`) and download the appropriate release at build time; eclair is compiled from the ACINQ git tag with Maven, which is slow the first time.
 
 ## Network YAML Schema
 
@@ -105,6 +109,10 @@ cln:
     connects_to: btc1
 ldk_server:
   - name: dave
+    connects_to: btc1
+eclair:
+  - name: eve
+    version: "0.14.0"   # 0.14.1+ requires bitcoind 31
     connects_to: btc1
 ```
 

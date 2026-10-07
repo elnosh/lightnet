@@ -29,6 +29,7 @@ listenonion=0
 txindex=1
 zmqpubrawblock=tcp://0.0.0.0:28332
 zmqpubrawtx=tcp://0.0.0.0:28333
+zmqpubhashblock=tcp://0.0.0.0:28334
 fallbackfee=0.0002
 `
 
@@ -86,12 +87,7 @@ func GenerateBitcoindConfig(networkName, nodeName string) (string, error) {
 func MineInitialBlocks(ctx context.Context, c *client.Client, containerName string, numBlocks int) error {
 	rpcBase := bitcoindRPCBase()
 
-	// Create the mining wallet; if it already exists, load it.
-	_, err := dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "createwallet", "test"))
-	if err != nil {
-		// Wallet may already exist — try loading it (ignore errors; it may be loaded).
-		dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "loadwallet", "test")) //nolint:errcheck
-	}
+	EnsureWallet(ctx, c, containerName, "test")
 
 	// Get a fresh address from the test wallet.
 	addrOut, err := dockerpkg.ExecOutput(ctx, c, containerName,
@@ -110,8 +106,17 @@ func MineInitialBlocks(ctx context.Context, c *client.Client, containerName stri
 	return nil
 }
 
+// EnsureWallet ignores errors: the wallet may already exist or be loaded, and
+// callers find out soon enough when they try to use it.
+func EnsureWallet(ctx context.Context, c *client.Client, containerName, wallet string) {
+	rpcBase := bitcoindRPCBase()
+	if _, err := dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "createwallet", wallet)); err != nil {
+		dockerpkg.ExecOutput(ctx, c, containerName, append(rpcBase, "loadwallet", wallet)) //nolint:errcheck
+	}
+}
+
 // WaitUntilReady polls bitcoin-cli getblockchaininfo until it succeeds or times out.
 func WaitUntilReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration) error {
 	cmd := append(bitcoindRPCBase(), "getblockchaininfo")
-	return pollUntilReady(ctx, c, containerName, timeout, cmd, "bitcoind")
+	return pollUntilReady(ctx, c, containerName, timeout, "bitcoind", execSucceeds(c, containerName, cmd))
 }

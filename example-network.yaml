@@ -20,17 +20,21 @@ lnd:
     version: "0.20.1-beta"
     connects_to: btc1
 
-  - name: charlie
-    version: "0.20.1-beta"
-    connects_to: btc1
-
 # --- Core Lightning nodes ---
 cln:
   - name: carol
-    version: "26.06.8"  # avoid 25.12: it cannot sign p2wpkh spends (fixed in 25.12.1)
+    version: "26.06.8"
     connects_to: btc1
 
 # --- LDK-server nodes ---
 ldk_server:
   - name: dave
+    connects_to: btc1
+
+# --- Eclair nodes ---
+# The image is built from source with Maven, so the first start for a given
+# version takes a few minutes. Eclair 0.14.1+ requires Bitcoin Core 31.
+eclair:
+  - name: eve
+    version: "0.14.0"
     connects_to: btc1

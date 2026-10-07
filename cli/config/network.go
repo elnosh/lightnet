@@ -7,6 +7,7 @@ type NetworkConfig struct {
 	LND       []LightningNodeConfig `yaml:"lnd"`
 	CLN       []LightningNodeConfig `yaml:"cln"`
 	LDKServer []LightningNodeConfig `yaml:"ldk_server"`
+	Eclair    []LightningNodeConfig `yaml:"eclair"`
 }
 
 type BitcoindConfig struct {

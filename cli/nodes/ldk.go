@@ -107,5 +107,5 @@ func FetchLDKPubkey(ctx context.Context, c *client.Client, containerName string)
 // WaitLDKReady polls ldk-server-cli get-node-info until the server is ready.
 func WaitLDKReady(ctx context.Context, c *client.Client, containerName string, timeout time.Duration) error {
 	cmd := append(append([]string{}, ldkCLIBase...), "get-node-info")
-	return pollUntilReady(ctx, c, containerName, timeout, cmd, "ldk-server")
+	return pollUntilReady(ctx, c, containerName, timeout, "ldk-server", execSucceeds(c, containerName, cmd))
 }
