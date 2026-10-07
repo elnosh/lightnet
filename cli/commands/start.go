@@ -101,15 +101,55 @@ func RunStart(nameOrPath string, rebuild bool) error {
 			return fmt.Errorf("network %q is already running", cfg.Name)
 		}
 		fmt.Printf("Network %q has stale state (containers not running); cleaning up before restart...\n", cfg.Name)
-		cleanupStaleNetwork(ctx, c, existing)
+		var names []string
+		for _, n := range existing.Nodes {
+			names = append(names, n.ContainerName)
+		}
+		removeNetworkResources(ctx, c, cfg.Name, names)
 	}
+
+	// A start that failed or was interrupted never reaches state.json, but its
+	// containers and docker network still hold the names we are about to use.
+	removeNetworkResources(ctx, c, cfg.Name, containerNames(cfg))
+
+	networkState, err := startNodes(ctx, c, cfg, rebuild)
+	if err != nil {
+		fmt.Printf("Stopping containers; they are kept for inspection (docker logs <container>) and removed on the next start.\n")
+		for _, name := range containerNames(cfg) {
+			if err := dockerpkg.StopContainer(ctx, c, name); err != nil {
+				fmt.Printf("  warning: %v\n", err)
+			}
+		}
+		return err
+	}
+
+	if err := state.AddNetwork(networkState); err != nil {
+		return fmt.Errorf("saving state: %w", err)
+	}
+
+	fmt.Println()
+	printNetworkInfo(networkState)
+
+	return nil
+}
+
+// startNodes cancels the remaining nodes on the first failure and waits for
+// them before returning, so no container is created after the caller starts
+// cleaning up.
+func startNodes(ctx context.Context, c *client.Client, cfg *config.NetworkConfig, rebuild bool) (state.RunningNetwork, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
 
 	dockerNet := dockerpkg.NetworkName(cfg.Name)
 
 	// Step 1: Create Docker bridge network
 	fmt.Printf("Creating Docker network %s...\n", dockerNet)
 	if err := dockerpkg.CreateNetwork(ctx, c, cfg.Name); err != nil {
-		return err
+		return state.RunningNetwork{}, err
 	}
 
 	networkState := state.RunningNetwork{
@@ -129,22 +169,22 @@ func RunStart(nameOrPath string, rebuild bool) error {
 
 		rpcPort, err := pa.next(baseBitcoindRPC)
 		if err != nil {
-			return fmt.Errorf("bitcoind %s: %w", btc.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("bitcoind %s: %w", btc.Name, err)
 		}
 		p2pPort, err := pa.next(baseBitcoindP2P)
 		if err != nil {
-			return fmt.Errorf("bitcoind %s: %w", btc.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("bitcoind %s: %w", btc.Name, err)
 		}
 
 		fmt.Printf("Configuring bitcoind node %s...\n", btc.Name)
 		dataDir, err := nodes.GenerateBitcoindConfig(cfg.Name, btc.Name)
 		if err != nil {
-			return fmt.Errorf("bitcoind %s config: %w", btc.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("bitcoind %s config: %w", btc.Name, err)
 		}
 
 		imageTag, err := ensureImage(ctx, c, "bitcoind", btc.Version, "BITCOIN_VERSION", rebuild)
 		if err != nil {
-			return err
+			return state.RunningNetwork{}, err
 		}
 
 		opts := dockerpkg.CreateContainerOptions{
@@ -163,15 +203,15 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		fmt.Printf("Starting bitcoind node %s...\n", btc.Name)
 		id, err := dockerpkg.CreateContainer(ctx, c, opts)
 		if err != nil {
-			return err
+			return state.RunningNetwork{}, err
 		}
 		if err := dockerpkg.StartContainer(ctx, c, id); err != nil {
-			return err
+			return state.RunningNetwork{}, err
 		}
 
 		fmt.Printf("Waiting for bitcoind %s to be ready...\n", btc.Name)
 		if err := nodes.WaitUntilReady(ctx, c, containerName, 60*time.Second); err != nil {
-			return err
+			return state.RunningNetwork{}, err
 		}
 
 		// Mine initial blocks so bitcoind exits IBD mode.
@@ -179,7 +219,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		// reports initialblockdownload=true forever and LND/CLN won't start.
 		fmt.Printf("Mining initial blocks on %s...\n", btc.Name)
 		if err := nodes.MineInitialBlocks(ctx, c, containerName, 101); err != nil {
-			return fmt.Errorf("mining initial blocks on %s: %w", btc.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("mining initial blocks on %s: %w", btc.Name, err)
 		}
 
 		networkState.Nodes[btc.Name] = state.NodeState{
@@ -200,22 +240,22 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		state state.NodeState
 		err   error
 	}
-	results := make(chan startResult)
-	var wg sync.WaitGroup
+	// Buffered so goroutines never block on send once collection has stopped.
+	results := make(chan startResult, len(cfg.LND)+len(cfg.CLN)+len(cfg.LDKServer)+len(cfg.Eclair))
 
 	// LND nodes
 	for _, lndCfg := range cfg.LND {
 		grpcPort, err := pa.next(baseLNDGRPC)
 		if err != nil {
-			return fmt.Errorf("lnd %s: %w", lndCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("lnd %s: %w", lndCfg.Name, err)
 		}
 		restPort, err := pa.next(baseLNDREST)
 		if err != nil {
-			return fmt.Errorf("lnd %s: %w", lndCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("lnd %s: %w", lndCfg.Name, err)
 		}
 		p2pPort, err := pa.next(baseLNDP2P)
 		if err != nil {
-			return fmt.Errorf("lnd %s: %w", lndCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("lnd %s: %w", lndCfg.Name, err)
 		}
 
 		wg.Add(1)
@@ -296,11 +336,11 @@ func RunStart(nameOrPath string, rebuild bool) error {
 	for _, clnCfg := range cfg.CLN {
 		grpcPort, err := pa.next(baseCLNGRPC)
 		if err != nil {
-			return fmt.Errorf("cln %s: %w", clnCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("cln %s: %w", clnCfg.Name, err)
 		}
 		p2pPort, err := pa.next(baseCLNP2P)
 		if err != nil {
-			return fmt.Errorf("cln %s: %w", clnCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("cln %s: %w", clnCfg.Name, err)
 		}
 
 		wg.Add(1)
@@ -383,11 +423,11 @@ func RunStart(nameOrPath string, rebuild bool) error {
 	for _, ldkCfg := range cfg.LDKServer {
 		restPort, err := pa.next(baseLDKREST)
 		if err != nil {
-			return fmt.Errorf("ldk %s: %w", ldkCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("ldk %s: %w", ldkCfg.Name, err)
 		}
 		p2pPort, err := pa.next(baseLDKP2P)
 		if err != nil {
-			return fmt.Errorf("ldk %s: %w", ldkCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("ldk %s: %w", ldkCfg.Name, err)
 		}
 
 		wg.Add(1)
@@ -467,11 +507,11 @@ func RunStart(nameOrPath string, rebuild bool) error {
 	for _, eclairCfg := range cfg.Eclair {
 		apiPort, err := pa.next(baseEclairAPI)
 		if err != nil {
-			return fmt.Errorf("eclair %s: %w", eclairCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("eclair %s: %w", eclairCfg.Name, err)
 		}
 		p2pPort, err := pa.next(baseEclairP2P)
 		if err != nil {
-			return fmt.Errorf("eclair %s: %w", eclairCfg.Name, err)
+			return state.RunningNetwork{}, fmt.Errorf("eclair %s: %w", eclairCfg.Name, err)
 		}
 
 		wg.Add(1)
@@ -551,24 +591,36 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		close(results)
 	}()
 
+	var firstErr error
 	for r := range results {
 		if r.err != nil {
-			return fmt.Errorf("starting node %s: %w", r.name, r.err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("starting node %s: %w", r.name, r.err)
+				cancel()
+			}
+			continue
 		}
 		fmt.Printf("Node %s is ready.\n", r.name)
 		networkState.Nodes[r.name] = r.state
 	}
-
-	// Step 4: Write state
-	if err := state.AddNetwork(networkState); err != nil {
-		return fmt.Errorf("saving state: %w", err)
+	if firstErr != nil {
+		return state.RunningNetwork{}, firstErr
 	}
 
-	// Step 5: Print summary
-	fmt.Println()
-	printNetworkInfo(networkState)
+	return networkState, nil
+}
 
-	return nil
+func containerNames(cfg *config.NetworkConfig) []string {
+	var names []string
+	for _, n := range cfg.Bitcoind {
+		names = append(names, dockerpkg.ContainerName(cfg.Name, n.Name))
+	}
+	for _, group := range [][]config.LightningNodeConfig{cfg.LND, cfg.CLN, cfg.LDKServer, cfg.Eclair} {
+		for _, n := range group {
+			names = append(names, dockerpkg.ContainerName(cfg.Name, n.Name))
+		}
+	}
+	return names
 }
 
 // isStaleNetwork returns true if state.json claims the network is running but
@@ -586,19 +638,18 @@ func isStaleNetwork(ctx context.Context, c *client.Client, net *state.RunningNet
 	return false, nil
 }
 
-// cleanupStaleNetwork removes containers and the docker bridge network left
-// over from a prior run. Best-effort: errors (e.g. container already gone) are
-// logged but not fatal. Data directories under ~/.lightnet/networks/<name>/
-// are NOT touched, so node identities and chain state persist.
-func cleanupStaleNetwork(ctx context.Context, c *client.Client, net *state.RunningNetwork) {
-	for nodeName, n := range net.Nodes {
+// removeNetworkResources is best-effort: errors are logged but not fatal.
+// Data directories under ~/.lightnet/networks/<name>/ are NOT touched, so node
+// identities and chain state persist.
+func removeNetworkResources(ctx context.Context, c *client.Client, networkName string, containers []string) {
+	for _, name := range containers {
 		// RemoveContainer uses Force=true which stops a running container
 		// before removing it, so a separate Stop call isn't needed.
-		if err := dockerpkg.RemoveContainer(ctx, c, n.ContainerName); err != nil {
-			fmt.Printf("  warning: removing %s: %v\n", nodeName, err)
+		if err := dockerpkg.RemoveContainer(ctx, c, name); err != nil {
+			fmt.Printf("  warning: removing %s: %v\n", name, err)
 		}
 	}
-	if err := dockerpkg.RemoveNetwork(ctx, c, net.Name); err != nil {
+	if err := dockerpkg.RemoveNetwork(ctx, c, networkName); err != nil {
 		fmt.Printf("  warning: removing docker network: %v\n", err)
 	}
 }

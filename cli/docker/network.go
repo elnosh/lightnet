@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/client"
 )
 
@@ -26,10 +27,11 @@ func CreateNetwork(ctx context.Context, c *client.Client, networkName string) er
 	return nil
 }
 
-// RemoveNetwork removes the Docker bridge network for the given lightnet network name.
+// RemoveNetwork removes the Docker bridge network for the given lightnet
+// network name. A network that does not exist is treated as already removed.
 func RemoveNetwork(ctx context.Context, c *client.Client, networkName string) error {
 	name := NetworkName(networkName)
-	if _, err := c.NetworkRemove(ctx, name, client.NetworkRemoveOptions{}); err != nil {
+	if _, err := c.NetworkRemove(ctx, name, client.NetworkRemoveOptions{}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("removing docker network %q: %w", name, err)
 	}
 	return nil

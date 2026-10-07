@@ -116,9 +116,10 @@ func StartContainer(ctx context.Context, c *client.Client, containerID string) e
 	return nil
 }
 
-// StopContainer stops a running container gracefully.
+// StopContainer stops a running container gracefully. A container that does
+// not exist is treated as already stopped.
 func StopContainer(ctx context.Context, c *client.Client, name string) error {
-	if _, err := c.ContainerStop(ctx, name, client.ContainerStopOptions{}); err != nil {
+	if _, err := c.ContainerStop(ctx, name, client.ContainerStopOptions{}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("stopping container %q: %w", name, err)
 	}
 	return nil
@@ -137,9 +138,10 @@ func ContainerRunning(ctx context.Context, c *client.Client, name string) (bool,
 	return res.Container.State != nil && res.Container.State.Running, nil
 }
 
-// RemoveContainer removes a stopped container.
+// RemoveContainer force-removes a container, stopping it first if it is
+// running. A container that does not exist is treated as already removed.
 func RemoveContainer(ctx context.Context, c *client.Client, name string) error {
-	if _, err := c.ContainerRemove(ctx, name, client.ContainerRemoveOptions{Force: true}); err != nil {
+	if _, err := c.ContainerRemove(ctx, name, client.ContainerRemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("removing container %q: %w", name, err)
 	}
 	return nil
