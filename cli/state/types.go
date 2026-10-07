@@ -34,8 +34,10 @@ type ConnectionInfo struct {
 	MacaroonPath string `json:"macaroon_path,omitempty"`
 	TLSCertPath  string `json:"tls_cert_path,omitempty"`
 
-	// cln
-	RPCSocketPath string `json:"rpc_socket_path,omitempty"`
+	// cln — gRPC uses mTLS: TLSCertPath holds the CA cert, plus a client cert/key.
+	ClientCertPath string `json:"client_cert_path,omitempty"`
+	ClientKeyPath  string `json:"client_key_path,omitempty"`
+	RPCSocketPath  string `json:"rpc_socket_path,omitempty"`
 
 	// ldk
 	LDKRESTUrl string `json:"ldk_rest_url,omitempty"`

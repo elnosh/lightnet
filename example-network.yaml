@@ -25,10 +25,10 @@ lnd:
     connects_to: btc1
 
 # --- Core Lightning nodes ---
-# cln:
-#   - name: carol
-#     # version: "25.12"  # optional — this is the default
-#     connects_to: btc1
+cln:
+  - name: carol
+    version: "26.06.8"  # avoid 25.12: it cannot sign p2wpkh spends (fixed in 25.12.1)
+    connects_to: btc1
 
 # --- LDK-server nodes ---
 ldk_server:

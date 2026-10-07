@@ -101,7 +101,7 @@ lnd:
     connects_to: btc1   # defaults to first bitcoind
 cln:
   - name: carol
-    version: "25.12"
+    version: "26.06.8"
     connects_to: btc1
 ldk_server:
   - name: dave

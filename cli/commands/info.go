@@ -56,6 +56,9 @@ func printNodeInfo(name string, n state.NodeState) {
 			fmt.Printf("  gRPC:         %s\n", n.Connection.GRPCUrl)
 		}
 		printP2P(n.Connection)
+		fmt.Printf("  gRPC CA cert: %s\n", n.Connection.TLSCertPath)
+		fmt.Printf("  gRPC client:  %s\n", n.Connection.ClientCertPath)
+		fmt.Printf("  gRPC key:     %s\n", n.Connection.ClientKeyPath)
 		if n.Connection.RPCSocketPath != "" {
 			fmt.Printf("\n  lightning-cli shortcut:\n")
 			fmt.Printf("    lightning-cli --network=regtest \\\n")

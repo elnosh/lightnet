@@ -120,8 +120,6 @@ func RunStart(nameOrPath string, rebuild bool) error {
 	home, _ := os.UserHomeDir()
 
 	pa := newPortAllocator()
-	// bitcoindRPCPorts maps containerName -> allocated RPC port so LN nodes can reference it.
-	bitcoindRPCPorts := make(map[string]int)
 
 	// Step 2: Generate configs and start bitcoind nodes
 	for _, btc := range cfg.Bitcoind {
@@ -135,8 +133,6 @@ func RunStart(nameOrPath string, rebuild bool) error {
 		if err != nil {
 			return fmt.Errorf("bitcoind %s: %w", btc.Name, err)
 		}
-
-		bitcoindRPCPorts[containerName] = rpcPort
 
 		fmt.Printf("Configuring bitcoind node %s...\n", btc.Name)
 		dataDir, err := nodes.GenerateBitcoindConfig(cfg.Name, btc.Name)
@@ -154,7 +150,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 			Image:       imageTag,
 			NetworkName: dockerNet,
 			Ports: []dockerpkg.PortBinding{
-				{HostPort: rpcPort, ContainerPort: 18443},
+				{HostPort: rpcPort, ContainerPort: nodes.BitcoindRPCContainerPort},
 				{HostPort: p2pPort, ContainerPort: 18444},
 			},
 			Mounts: []dockerpkg.VolumeMount{
@@ -196,8 +192,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 	}
 
 	// Step 3: Start lightning nodes concurrently.
-	// Ports are allocated serially here before goroutines launch; the
-	// bitcoindRPCPorts map is only read (never written) inside goroutines.
+	// Ports are allocated serially here before goroutines launch.
 	type startResult struct {
 		name  string
 		state state.NodeState
@@ -226,9 +221,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 			defer wg.Done()
 			containerName := dockerpkg.ContainerName(cfg.Name, lndCfg.Name)
 			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, lndCfg.ConnectsTo)
-			btcRPCPort := bitcoindRPCPorts[bitcoindContainer]
-
-			dataDir, err := nodes.GenerateLNDConfig(cfg.Name, lndCfg.Name, bitcoindContainer, btcRPCPort, grpcPort, restPort)
+			dataDir, err := nodes.GenerateLNDConfig(cfg.Name, lndCfg.Name, bitcoindContainer, nodes.BitcoindRPCContainerPort, grpcPort, restPort)
 			if err != nil {
 				results <- startResult{name: lndCfg.Name, err: fmt.Errorf("lnd %s config: %w", lndCfg.Name, err)}
 				return
@@ -313,9 +306,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 			defer wg.Done()
 			containerName := dockerpkg.ContainerName(cfg.Name, clnCfg.Name)
 			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, clnCfg.ConnectsTo)
-			btcRPCPort := bitcoindRPCPorts[bitcoindContainer]
-
-			dataDir, err := nodes.GenerateCLNConfig(cfg.Name, clnCfg.Name, bitcoindContainer, btcRPCPort, grpcPort)
+			dataDir, err := nodes.GenerateCLNConfig(cfg.Name, clnCfg.Name, bitcoindContainer, nodes.BitcoindRPCContainerPort, grpcPort)
 			if err != nil {
 				results <- startResult{name: clnCfg.Name, err: fmt.Errorf("cln %s config: %w", clnCfg.Name, err)}
 				return
@@ -361,7 +352,10 @@ func RunStart(nameOrPath string, rebuild bool) error {
 				return
 			}
 
-			rpcSocket := filepath.Join(home, ".lightnet", "networks", cfg.Name, clnCfg.Name, "data", "regtest", "lightning-rpc")
+			// lightningd runs from the network subdirectory, so the grpc plugin
+			// writes its certificates there.
+			netDir := filepath.Join(home, ".lightnet", "networks", cfg.Name, clnCfg.Name, "data", "regtest")
+			rpcSocket := filepath.Join(netDir, "lightning-rpc")
 
 			results <- startResult{
 				name: clnCfg.Name,
@@ -369,11 +363,14 @@ func RunStart(nameOrPath string, rebuild bool) error {
 					Kind:          "cln",
 					ContainerName: containerName,
 					Connection: state.ConnectionInfo{
-						GRPCUrl:       fmt.Sprintf("localhost:%d", grpcPort),
-						RPCSocketPath: rpcSocket,
-						Pubkey:        pubkey,
-						P2PInternal:   fmt.Sprintf("%s:%d", containerName, nodes.CLNP2PContainerPort),
-						P2PExternal:   fmt.Sprintf("127.0.0.1:%d", p2pPort),
+						GRPCUrl:        fmt.Sprintf("localhost:%d", grpcPort),
+						TLSCertPath:    filepath.Join(netDir, "ca.pem"),
+						ClientCertPath: filepath.Join(netDir, "client.pem"),
+						ClientKeyPath:  filepath.Join(netDir, "client-key.pem"),
+						RPCSocketPath:  rpcSocket,
+						Pubkey:         pubkey,
+						P2PInternal:    fmt.Sprintf("%s:%d", containerName, nodes.CLNP2PContainerPort),
+						P2PExternal:    fmt.Sprintf("127.0.0.1:%d", p2pPort),
 					},
 				},
 			}
@@ -396,9 +393,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 			defer wg.Done()
 			containerName := dockerpkg.ContainerName(cfg.Name, ldkCfg.Name)
 			bitcoindContainer := dockerpkg.ContainerName(cfg.Name, ldkCfg.ConnectsTo)
-			btcRPCPort := bitcoindRPCPorts[bitcoindContainer]
-
-			dataDir, err := nodes.GenerateLDKConfig(cfg.Name, ldkCfg.Name, bitcoindContainer, btcRPCPort)
+			dataDir, err := nodes.GenerateLDKConfig(cfg.Name, ldkCfg.Name, bitcoindContainer, nodes.BitcoindRPCContainerPort)
 			if err != nil {
 				results <- startResult{name: ldkCfg.Name, err: fmt.Errorf("ldk %s config: %w", ldkCfg.Name, err)}
 				return
@@ -423,7 +418,7 @@ func RunStart(nameOrPath string, rebuild bool) error {
 					{HostPath: dataDir, ContainerPath: "/data"},
 				},
 				Env: []string{
-					fmt.Sprintf("LDK_SERVER_BITCOIND_RPC_ADDRESS=%s:%d", bitcoindContainer, btcRPCPort),
+					fmt.Sprintf("LDK_SERVER_BITCOIND_RPC_ADDRESS=%s:%d", bitcoindContainer, nodes.BitcoindRPCContainerPort),
 					"LDK_SERVER_BITCOIND_RPC_USER=lightnet",
 					"LDK_SERVER_BITCOIND_RPC_PASSWORD=lightnet",
 				},

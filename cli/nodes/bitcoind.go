@@ -32,6 +32,11 @@ zmqpubrawtx=tcp://0.0.0.0:28333
 fallbackfee=0.0002
 `
 
+// BitcoindRPCContainerPort is the RPC port bitcoind always listens on inside
+// the container. The host-mapped port can differ per node; LN nodes in the
+// same Docker network must use this one.
+const BitcoindRPCContainerPort = 18443
+
 // BitcoindNode implements Node for a bitcoind container.
 type BitcoindNode struct {
 	Name          string
