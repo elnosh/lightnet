@@ -18,6 +18,9 @@ import (
 // when auto-funding (1.5x gives headroom for fees and future channels).
 const fundingMultiplier = 1.5
 
+// eclairFundingFeeBudgetSats caps the mining fee eclair may pay to fund a channel.
+const eclairFundingFeeBudgetSats = 50000
+
 func RunOpenChannel(networkName, fromName, toName string, amountSats int64) error {
 	net, err := state.GetNetwork(networkName)
 	if err != nil {
@@ -94,6 +97,36 @@ func RunOpenChannel(networkName, fromName, toName string, amountSats int64) erro
 		})
 		return dockerpkg.Exec(ctx, c, fromState.ContainerName, openCmd)
 
+	case "eclair":
+		// eclair-cli exits 0 on API errors, so inspect the output instead.
+		uri := fmt.Sprintf("%s@%s", toState.Connection.Pubkey, toState.Connection.P2PInternal)
+		out, err := dockerpkg.ExecOutput(ctx, c, fromState.ContainerName,
+			fromNode.BuildCommand([]string{"connect", "--uri=" + uri}))
+		if err != nil {
+			return fmt.Errorf("connect: %w", err)
+		}
+		if s := strings.TrimSpace(out); s != "connected" && s != "already connected" {
+			return fmt.Errorf("connect: %s", s)
+		}
+
+		out, err = dockerpkg.ExecOutput(ctx, c, fromState.ContainerName, fromNode.BuildCommand([]string{
+			"open",
+			"--nodeId=" + toState.Connection.Pubkey,
+			fmt.Sprintf("--fundingSatoshis=%d", amountSats),
+			// eclair's default fee budget is 0.1% of the amount, which regtest
+			// feerates routinely exceed for small channels.
+			fmt.Sprintf("--fundingFeeBudgetSatoshis=%d", eclairFundingFeeBudgetSats),
+		}))
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
+		}
+		out = strings.TrimSpace(out)
+		if !strings.HasPrefix(out, "created channel") {
+			return fmt.Errorf("open: %s", out)
+		}
+		fmt.Println(out)
+		return nil
+
 	default:
 		return fmt.Errorf("openchannel not supported for node type %q", fromState.Kind)
 	}
@@ -128,6 +161,19 @@ func lnConfirmedBalance(ctx context.Context, c *client.Client, node nodes.Node, 
 		}
 		return resp.SpendableOnchainBalanceSats, nil
 
+	case "eclair":
+		out, err := dockerpkg.ExecOutput(ctx, c, ns.ContainerName, node.BuildCommand([]string{"onchainbalance"}))
+		if err != nil {
+			return 0, err
+		}
+		var resp struct {
+			Confirmed int64 `json:"confirmed"`
+		}
+		if err := json.Unmarshal([]byte(out), &resp); err != nil {
+			return 0, fmt.Errorf("parsing onchainbalance: %w (output: %s)", err, out)
+		}
+		return resp.Confirmed, nil
+
 	default:
 		return 0, fmt.Errorf("balance check not supported for node type %q", ns.Kind)
 	}
@@ -141,6 +187,17 @@ func lnNewOnchainAddress(ctx context.Context, c *client.Client, node nodes.Node,
 		cmd = node.BuildCommand([]string{"newaddress", "p2wkh"})
 	case "ldk":
 		cmd = node.BuildCommand([]string{"onchain-receive"})
+	case "eclair":
+		// eclair returns a bare address, not {"address": ...}
+		out, err := dockerpkg.ExecOutput(ctx, c, ns.ContainerName, node.BuildCommand([]string{"getnewaddress"}))
+		if err != nil {
+			return "", err
+		}
+		addr := strings.TrimSpace(out)
+		if !strings.HasPrefix(addr, "bcrt1") {
+			return "", fmt.Errorf("unexpected getnewaddress output: %s", addr)
+		}
+		return addr, nil
 	default:
 		return "", fmt.Errorf("new address not supported for node type %q", ns.Kind)
 	}
