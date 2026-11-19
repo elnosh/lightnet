@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/moby/moby/client"
 
@@ -69,6 +70,13 @@ func RunOpenChannel(networkName, fromName, toName string, amountSats int64) erro
 		if err := RunFund(networkName, addr, fundBTC); err != nil {
 			return fmt.Errorf("funding %q: %w", fromName, err)
 		}
+		// CLN polls bitcoind for new blocks rather than using ZMQ, so it can
+		// lag the funding confirmations by tens of seconds.
+		if fromState.Kind == "cln" {
+			if err := waitConfirmedBalance(ctx, c, fromNode, fromState, needed, 60*time.Second); err != nil {
+				return fmt.Errorf("waiting for %q to see funds: %w", fromName, err)
+			}
+		}
 	}
 
 	switch fromState.Kind {
@@ -96,6 +104,16 @@ func RunOpenChannel(networkName, fromName, toName string, amountSats int64) erro
 			"--announce-channel",
 		})
 		return dockerpkg.Exec(ctx, c, fromState.ContainerName, openCmd)
+
+	case "cln":
+		connectTarget := fmt.Sprintf("%s@%s", toState.Connection.Pubkey, toState.Connection.P2PInternal)
+		if _, err := dockerpkg.ExecOutput(ctx, c, fromState.ContainerName,
+			fromNode.BuildCommand([]string{"connect", connectTarget})); err != nil {
+			return fmt.Errorf("connect: %w", err)
+		}
+		return dockerpkg.Exec(ctx, c, fromState.ContainerName, fromNode.BuildCommand([]string{
+			"fundchannel", toState.Connection.Pubkey, fmt.Sprintf("%d", amountSats),
+		}))
 
 	case "eclair":
 		// eclair-cli exits 0 on API errors, so inspect the output instead.
@@ -174,6 +192,29 @@ func lnConfirmedBalance(ctx context.Context, c *client.Client, node nodes.Node, 
 		}
 		return resp.Confirmed, nil
 
+	case "cln":
+		out, err := dockerpkg.ExecOutput(ctx, c, ns.ContainerName, node.BuildCommand([]string{"listfunds"}))
+		if err != nil {
+			return 0, err
+		}
+		var resp struct {
+			Outputs []struct {
+				AmountMsat int64  `json:"amount_msat"`
+				Status     string `json:"status"`
+				Reserved   bool   `json:"reserved"`
+			} `json:"outputs"`
+		}
+		if err := json.Unmarshal([]byte(out), &resp); err != nil {
+			return 0, fmt.Errorf("parsing listfunds: %w", err)
+		}
+		var total int64
+		for _, o := range resp.Outputs {
+			if o.Status == "confirmed" && !o.Reserved {
+				total += o.AmountMsat / 1000
+			}
+		}
+		return total, nil
+
 	default:
 		return 0, fmt.Errorf("balance check not supported for node type %q", ns.Kind)
 	}
@@ -198,6 +239,25 @@ func lnNewOnchainAddress(ctx context.Context, c *client.Client, node nodes.Node,
 			return "", fmt.Errorf("unexpected getnewaddress output: %s", addr)
 		}
 		return addr, nil
+	case "cln":
+		out, err := dockerpkg.ExecOutput(ctx, c, ns.ContainerName, node.BuildCommand([]string{"newaddr"}))
+		if err != nil {
+			return "", err
+		}
+		var resp struct {
+			Bech32 string `json:"bech32"`
+			P2TR   string `json:"p2tr"`
+		}
+		if err := json.Unmarshal([]byte(out), &resp); err != nil {
+			return "", fmt.Errorf("parsing newaddr: %w", err)
+		}
+		if resp.Bech32 != "" {
+			return resp.Bech32, nil
+		}
+		if resp.P2TR != "" {
+			return resp.P2TR, nil
+		}
+		return "", fmt.Errorf("empty address returned")
 	default:
 		return "", fmt.Errorf("new address not supported for node type %q", ns.Kind)
 	}
@@ -216,6 +276,21 @@ func lnNewOnchainAddress(ctx context.Context, c *client.Client, node nodes.Node,
 		return "", fmt.Errorf("empty address returned")
 	}
 	return resp.Address, nil
+}
+
+// waitConfirmedBalance polls until the node reports at least min sats confirmed.
+func waitConfirmedBalance(ctx context.Context, c *client.Client, node nodes.Node, ns state.NodeState, min int64, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		balance, err := lnConfirmedBalance(ctx, c, node, ns)
+		if err == nil && balance >= min {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out after %s (balance %d sat, need %d sat)", timeout, balance, min)
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 func isAlreadyConnected(err error) bool {
